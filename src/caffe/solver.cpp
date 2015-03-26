@@ -821,11 +821,13 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
 
 template <typename Dtype>
 void AdaDeltaSolver<Dtype>::PreSolve() {
-  // Add the extra history entries for AdaDelta after those from SGDSolver::PreSolve
+  // Add the extra history entries for AdaDelta after those from
+  // SGDSolver::PreSolve
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   for (int i = 0; i < net_params.size(); ++i) {
         const vector<int>& shape = net_params[i]->shape();
-        this->history_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+        this->history_.push_back(
+                shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
   }
 }
 
@@ -833,7 +835,7 @@ template <typename Dtype>
 void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   const vector<float>& net_params_weight_decay =
-		  this->net_->params_weight_decay();
+          this->net_->params_weight_decay();
   Dtype delta = this->param_.delta();
   Dtype momentum = this->param_.momentum();
   Dtype weight_decay = this->param_.weight_decay();
