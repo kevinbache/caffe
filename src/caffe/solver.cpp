@@ -880,7 +880,7 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
       caffe_add(net_params[param_id]->count(),
           this->temp_[param_id]->cpu_data(),
           this->history_[update_history_offset + param_id]->cpu_data(),
-                          this->update_[param_id]->mutable_cpu_data());
+          this->update_[param_id]->mutable_cpu_data());
 
       caffe_add(net_params[param_id]->count(),
           this->temp_[param_id]->cpu_data(),
