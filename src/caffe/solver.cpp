@@ -821,28 +821,11 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
 
 template <typename Dtype>
 void AdaDeltaSolver<Dtype>::PreSolve() {
-  // Initialize the history
+  // Initialize the extra history entries for AdaDelta.  This constructor is called after SGDSolver's
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
-  this->history_.clear();
-  this->update_.clear();
-  this->temp_.clear();
   for (int i = 0; i < net_params.size(); ++i) {
-    const Blob<Dtype>* net_param = net_params[i].get();
-    this->history_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(
-        net_param->num(), net_param->channels(), net_param->height(),
-        net_param->width())));
-    this->update_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(
-        net_param->num(), net_param->channels(), net_param->height(),
-        net_param->width())));
-    this->temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(
-        net_param->num(), net_param->channels(), net_param->height(),
-        net_param->width())));
-  }
-  for (int i = 0; i < net_params.size(); ++i) {
-    const Blob<Dtype>* net_param = net_params[i].get();
-    this->history_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(
-        net_param->num(), net_param->channels(), net_param->height(),
-        net_param->width())));
+	    const vector<int>& shape = net_params[i]->shape();
+	    this->history_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
   }
 }
 
@@ -897,7 +880,7 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
       caffe_add(net_params[param_id]->count(),
           this->temp_[param_id]->cpu_data(),
           this->history_[update_history_offset + param_id]->cpu_data(),
-          this->update_[param_id]->mutable_cpu_data());
+                          this->update_[param_id]->mutable_cpu_data());
 
       caffe_add(net_params[param_id]->count(),
           this->temp_[param_id]->cpu_data(),
