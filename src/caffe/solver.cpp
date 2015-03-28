@@ -1003,10 +1003,130 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
   }
 }
 
+template<typename Dtype>
+void DucbSolver<Dtype>::LogSpace(shared_ptr<vector<Dtype > > vect,
+    Dtype log_high_alpha, Dtype log_low_alpha, int n_alphas, Dtype base) {
+  vect->clear();
+  Dtype delta = (log_high_alpha - log_low_alpha) / (n_alphas - 1);
+  for (int i = 0; i < n_alphas; ++i) {
+    Dtype linear_val = log_high_alpha - i * delta;
+    vect->push_back(pow(base, linear_val));
+  }
+}
+
+
+template <typename Dtype>
+void DucbSolver<Dtype>::ComputeUpdateValue() {
+//  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+//  const vector<float>& net_params_lr = this->net_->params_lr();
+//  const vector<float>& net_params_weight_decay =
+//      this->net_->params_weight_decay();
+//  // get the learning rate
+////  Dtype rate = GetLearningRate();
+//  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
+//    LOG(INFO) << "Iteration " << this->iter_ << ", lr = " << rate;
+//  }
+//  ClipGradients();
+//  Dtype momentum = this->param_.momentum();
+//  Dtype weight_decay = this->param_.weight_decay();
+//  string regularization_type = this->param_.regularization_type();
+//  switch (Caffe::mode()) {
+//  case Caffe::CPU:
+//
+//	 // weight decay
+//	 for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+//      // Compute the value to history, and then copy them to the blob's diff.
+//      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
+//
+//      if (local_decay) {
+//        if (regularization_type == "L2") {
+//          // add weight decay
+//          caffe_axpy(net_params[param_id]->count(),
+//              local_decay,
+//              net_params[param_id]->cpu_data(),
+//              net_params[param_id]->mutable_cpu_diff());
+//        } else if (regularization_type == "L1") {
+//          caffe_cpu_sign(net_params[param_id]->count(),
+//              net_params[param_id]->cpu_data(),
+//              temp_[param_id]->mutable_cpu_data());
+//          caffe_axpy(net_params[param_id]->count(),
+//              local_decay,
+//              temp_[param_id]->cpu_data(),
+//              net_params[param_id]->mutable_cpu_diff());
+//        } else {
+//          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
+//        }
+//      }
+//
+//    }
+//
+//	jump_by_rate_cpu(net_params, rate, net_params_lr);
+//
+//    break;
+//  case Caffe::GPU:
+//#ifndef CPU_ONLY
+//    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+//      // Compute the value to history, and then copy them to the blob's diff.
+//      Dtype local_rate = rate * net_params_lr[param_id];
+//      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
+//
+//      if (local_decay) {
+//        if (regularization_type == "L2") {
+//          // add weight decay
+//          caffe_gpu_axpy(net_params[param_id]->count(),
+//              local_decay,
+//              net_params[param_id]->gpu_data(),
+//              net_params[param_id]->mutable_gpu_diff());
+//        } else if (regularization_type == "L1") {
+//          caffe_gpu_sign(net_params[param_id]->count(),
+//              net_params[param_id]->gpu_data(),
+//              temp_[param_id]->mutable_gpu_data());
+//          caffe_gpu_axpy(net_params[param_id]->count(),
+//              local_decay,
+//              temp_[param_id]->gpu_data(),
+//              net_params[param_id]->mutable_gpu_diff());
+//        } else {
+//          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
+//        }
+//      }
+//    }
+//
+//	jump_by_rate_cpu(net_params, rate, net_params_lr);
+//
+//#else
+//    NO_GPU;
+//#endif
+//    break;
+//  default:
+//    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+//  }
+}
+
+template <typename Dtype>
+void DucbSolver<Dtype>::PreSolve() {
+
+  log_high_alpha = this->param_.log_high_alpha();
+  log_low_alpha = this->param_.log_low_alpha();
+  n_alphas = this->param_.n_alphas();
+
+  ducb_gamma = this->param_.ducb_gamma();
+  explore_const = this->param_.explore_const();
+
+
+  alphas_ = shared_ptr<vector<Dtype> >(new vector<Dtype>);
+  LogSpace(alphas_, log_high_alpha, log_low_alpha, n_alphas);
+
+  rewards_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
+  numbers_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
+}
+
+
+
 INSTANTIATE_CLASS(Solver);
 INSTANTIATE_CLASS(SGDSolver);
 INSTANTIATE_CLASS(NesterovSolver);
 INSTANTIATE_CLASS(AdaGradSolver);
 INSTANTIATE_CLASS(AdaDeltaSolver);
+INSTANTIATE_CLASS(DucbSolver);
 
 }  // namespace caffe

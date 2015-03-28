@@ -6,6 +6,18 @@
 
 #include "caffe/net.hpp"
 
+// print the contents of a unidimensional blob.  used for debugging.
+#define PRINT_VECTOR_BLOB(v) \
+  for (int i = 0; i < v->shape(3); i++) { \
+    std::cout << v->data_at(0,0,0,i) << ' '; \
+  } \
+  std::cout << "\n";
+
+// print the contents of a vector
+#define PRINT_VECTOR(v, Dtype) \
+  std::copy(v->begin(), v->end(), std::ostream_iterator<Dtype>(std::cout, " ")); \
+  std::cout << "\n";
+
 namespace caffe {
 
 /**
@@ -147,6 +159,81 @@ class AdaDeltaSolver : public SGDSolver<Dtype> {
 };
 
 template <typename Dtype>
+class DucbSolver : public SGDSolver<Dtype> {
+ public:
+  explicit DucbSolver(const SolverParameter& param)
+      : SGDSolver<Dtype>(param) { PreSolve(); constructor_sanity_check(); }
+  explicit DucbSolver(const string& param_file)
+      : SGDSolver<Dtype>(param_file) { PreSolve(); constructor_sanity_check(); }
+
+ protected:
+  virtual void PreSolve();
+  virtual void ComputeUpdateValue();
+//  void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
+//  void GetStartingLrIndex();
+//  void JumpToAlpa(Dtype next_alpha, Dtype param_alpha_current, Dtype grad_alpha_current);
+//  void JumpFromBackup(Dtype next_alpha);
+//  void JumpFromZero(Dtype next_alpha);
+  void constructor_sanity_check() {
+// 	  // TODO: fill in
+//    CHECK_EQ(0, this->param_.base_lr())
+//        << "Learning rate cannot be used with AdaDelta.";
+//    CHECK_EQ("", this->param_.lr_policy())
+//        << "Learning rate policy cannot be applied to AdaDelta.";
+  }
+
+  // make a vector of logarithmically spaced values
+  void LogSpace(shared_ptr<vector<Dtype> > vect, Dtype log_high_alpha = 2,
+      Dtype log_low_alpha = -6, int n_alphas = 33, Dtype base = 10);
+
+//  // get the value from a Blob vector which is stored at a given index
+//  Dtype GetBlobVect(shared_ptr<Blob<Dtype> >& blob_vect, int index) {
+//    return blob_vect->cpu_data()[blob_vect->offset(0,0,0,index)];
+//  }
+//
+//  // set the value on a Blob vector which is stored at a given index
+//  void SetBlobVect(shared_ptr<Blob<Dtype> >& blob_vect, int index, Dtype val) {
+//    blob_vect->mutable_cpu_data()[blob_vect->offset(0,0,0,index)] = val;
+//  }
+
+  // alphas_ maintains a set of all the learning rates we are willing to consider
+  // rewards_ tracks the reward values for each alpha
+  // numbers_ tracks the number of times each alpha has been played
+  // all three are needed in the snapshot
+  shared_ptr<vector<Dtype> > alphas_, rewards_, numbers_;
+
+  // the DUCB algorithm performs an initial sweep of all possible alpha values
+  // at the start of each training run.  init_sweep_ind tracks the index of the
+  // next alpha to try
+  int init_sweep_ind;
+
+  // base-10 log of the smallest learning rate value to be considered
+  // default: -6
+  Dtype log_low_alpha;
+  // base-10 log of the largest learning rate value to be considered
+  // default: 2
+  Dtype log_high_alpha;
+  // number of learning rates to be log-interpolated between log_low_alpha and log_high_alpha.
+  // default: 33
+  int n_alphas;
+
+
+  // DUCB hyperparameters
+  // forgetting factor, \in [0, 1].
+  // 0 means the bandit model has no memory.  1 means no forgetting.
+  // default: 0.99
+  Dtype ducb_gamma;
+  // explore constant, positive float.
+  // larger number means the bandit model will take more explore steps
+  // default: 1e-8
+  Dtype explore_const;
+
+
+    DISABLE_COPY_AND_ASSIGN(DucbSolver);
+};
+
+
+template <typename Dtype>
 Solver<Dtype>* GetSolver(const SolverParameter& param) {
   SolverParameter_SolverType type = param.solver_type();
 
@@ -159,6 +246,8 @@ Solver<Dtype>* GetSolver(const SolverParameter& param) {
       return new AdaGradSolver<Dtype>(param);
   case SolverParameter_SolverType_ADADELTA:
       return new AdaDeltaSolver<Dtype>(param);
+  case SolverParameter_SolverType_DUCB:
+      return new DucbSolver<Dtype>(param);
   default:
       LOG(FATAL) << "Unknown SolverType: " << type;
   }

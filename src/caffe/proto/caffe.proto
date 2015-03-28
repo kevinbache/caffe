@@ -88,7 +88,7 @@ message NetParameter {
 // NOTE
 // Update the next available ID when you add a new SolverParameter field.
 //
-// SolverParameter next available ID: 36 (last added: clip_gradients)
+// SolverParameter next available ID: 41 (last added: explore_const)
 message SolverParameter {
   //////////////////////////////////////////////////////////////////////////////
   // Specifying the train and test networks
@@ -182,6 +182,7 @@ message SolverParameter {
     NESTEROV = 1;
     ADAGRAD = 2;
     ADADELTA = 3;
+    DUCB = 4;
   }
   optional SolverType solver_type = 30 [default = SGD];
   // numerical stability for AdaGrad
@@ -193,6 +194,20 @@ message SolverParameter {
 
   // If false, don't save a snapshot after training finishes.
   optional bool snapshot_after_train = 28 [default = true];
+
+  ///////////////////////////  
+  // DUCBSolver parameters //
+  ///////////////////////////  
+  // the (base-10) log of the highest learning rate value for the DUCBSolver to consider
+  optional float log_high_alpha = 36 [default = 2];    
+  // the (base-10) log of the lowest learning rate value for the DUCBSolver to consider
+  optional float log_low_alpha = 37 [default = -6];    
+  // the number of log-spaced learning rates to be created between log_high_alpha and log_low_alpha
+  optional int32 n_alphas = 38 [default = 33];        
+  // DUCB forgetting constant.  higher value means less forgetting.
+  optional float ducb_gamma = 39 [default = 0.99];       
+  // DUCB explore constant.  higher value means more exploration
+  optional float explore_const = 40 [default = 1e-8];  
 }
 
 // A message that stores the solver snapshots
