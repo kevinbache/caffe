@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include <math.h> // for isnan, log
 
 #include "caffe/net.hpp"
 #include "caffe/proto/caffe.pb.h"
@@ -10,6 +11,7 @@
 #include "caffe/util/io.hpp"
 #include "caffe/util/math_functions.hpp"
 #include "caffe/util/upgrade_proto.hpp"
+
 
 namespace caffe {
 
@@ -1014,93 +1016,78 @@ void DucbSolver<Dtype>::LogSpace(shared_ptr<vector<Dtype > > vect,
   }
 }
 
+template<typename Dtype>
+void DucbSolver<Dtype>::RegularizeGradient() {
+  // perform L1 or L2 regularization
+  Dtype weight_decay = this->param_.weight_decay();
+  string regularization_type = this->param_.regularization_type();
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<float>& net_params_weight_decay =
+      this->net_->params_weight_decay();
+  const vector<shared_ptr<Blob<Dtype> > >& temp_ = this->temp_;
+  switch (Caffe::mode()) {
+  case Caffe::CPU:
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      // Compute the value to history, and then copy them to the blob's diff.
+      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
 
-template <typename Dtype>
-void DucbSolver<Dtype>::ComputeUpdateValue() {
-//  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
-//  const vector<float>& net_params_lr = this->net_->params_lr();
-//  const vector<float>& net_params_weight_decay =
-//      this->net_->params_weight_decay();
-//  // get the learning rate
-////  Dtype rate = GetLearningRate();
-//  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
-//    LOG(INFO) << "Iteration " << this->iter_ << ", lr = " << rate;
-//  }
-//  ClipGradients();
-//  Dtype momentum = this->param_.momentum();
-//  Dtype weight_decay = this->param_.weight_decay();
-//  string regularization_type = this->param_.regularization_type();
-//  switch (Caffe::mode()) {
-//  case Caffe::CPU:
-//
-//	 // weight decay
-//	 for (int param_id = 0; param_id < net_params.size(); ++param_id) {
-//      // Compute the value to history, and then copy them to the blob's diff.
-//      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-//
-//      if (local_decay) {
-//        if (regularization_type == "L2") {
-//          // add weight decay
-//          caffe_axpy(net_params[param_id]->count(),
-//              local_decay,
-//              net_params[param_id]->cpu_data(),
-//              net_params[param_id]->mutable_cpu_diff());
-//        } else if (regularization_type == "L1") {
-//          caffe_cpu_sign(net_params[param_id]->count(),
-//              net_params[param_id]->cpu_data(),
-//              temp_[param_id]->mutable_cpu_data());
-//          caffe_axpy(net_params[param_id]->count(),
-//              local_decay,
-//              temp_[param_id]->cpu_data(),
-//              net_params[param_id]->mutable_cpu_diff());
-//        } else {
-//          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
-//        }
-//      }
-//
-//    }
-//
-//	jump_by_rate_cpu(net_params, rate, net_params_lr);
-//
-//    break;
-//  case Caffe::GPU:
-//#ifndef CPU_ONLY
-//    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
-//      // Compute the value to history, and then copy them to the blob's diff.
-//      Dtype local_rate = rate * net_params_lr[param_id];
-//      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-//
-//      if (local_decay) {
-//        if (regularization_type == "L2") {
-//          // add weight decay
-//          caffe_gpu_axpy(net_params[param_id]->count(),
-//              local_decay,
-//              net_params[param_id]->gpu_data(),
-//              net_params[param_id]->mutable_gpu_diff());
-//        } else if (regularization_type == "L1") {
-//          caffe_gpu_sign(net_params[param_id]->count(),
-//              net_params[param_id]->gpu_data(),
-//              temp_[param_id]->mutable_gpu_data());
-//          caffe_gpu_axpy(net_params[param_id]->count(),
-//              local_decay,
-//              temp_[param_id]->gpu_data(),
-//              net_params[param_id]->mutable_gpu_diff());
-//        } else {
-//          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
-//        }
-//      }
-//    }
-//
-//	jump_by_rate_cpu(net_params, rate, net_params_lr);
-//
-//#else
-//    NO_GPU;
-//#endif
-//    break;
-//  default:
-//    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
-//  }
+      if (local_decay) {
+        if (regularization_type == "L2") {
+          // add weight decay
+          caffe_axpy(net_params[param_id]->count(), local_decay,
+              net_params[param_id]->cpu_data(),
+              net_params[param_id]->mutable_cpu_diff());
+        } else if (regularization_type == "L1") {
+          caffe_cpu_sign(net_params[param_id]->count(),
+              net_params[param_id]->cpu_data(),
+              temp_[param_id]->mutable_cpu_data());
+          caffe_axpy(net_params[param_id]->count(), local_decay,
+              temp_[param_id]->cpu_data(),
+              net_params[param_id]->mutable_cpu_diff());
+        } else {
+          LOG(FATAL)<< "Unknown regularization type: " << regularization_type;
+        }
+      }
+
+    }
+
+    break;
+    case Caffe::GPU:
+#ifndef CPU_ONLY
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      // Compute the value to history, and then copy them to the blob's diff.
+      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
+
+      if (local_decay) {
+        if (regularization_type == "L2") {
+          // add weight decay
+          caffe_gpu_axpy(net_params[param_id]->count(),
+              local_decay,
+              net_params[param_id]->gpu_data(),
+              net_params[param_id]->mutable_gpu_diff());
+        } else if (regularization_type == "L1") {
+          caffe_gpu_sign(net_params[param_id]->count(),
+              net_params[param_id]->gpu_data(),
+              temp_[param_id]->mutable_gpu_data());
+          caffe_gpu_axpy(net_params[param_id]->count(),
+              local_decay,
+              temp_[param_id]->gpu_data(),
+              net_params[param_id]->mutable_gpu_diff());
+        } else {
+          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
+        }
+      }
+    }
+
+#else
+    NO_GPU;
+#endif
+    break;
+    default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
 }
+
 
 template <typename Dtype>
 void DucbSolver<Dtype>::PreSolve() {
@@ -1112,15 +1099,252 @@ void DucbSolver<Dtype>::PreSolve() {
   ducb_gamma = this->param_.ducb_gamma();
   explore_const = this->param_.explore_const();
 
-
   alphas_ = shared_ptr<vector<Dtype> >(new vector<Dtype>);
   LogSpace(alphas_, log_high_alpha, log_low_alpha, n_alphas);
 
+  // sufficient statistics for the bandit model
   rewards_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
   numbers_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
+
+  mus_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
+  cs_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
+  js_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
+
+  init_sweep_ind = 0;
+
+//  // initialize temporary update memory to same size as net parameters
+//  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+//  temp_ = this->temp_;
+//  temp_.clear();
+//  for (int i = 0; i < net_params.size(); ++i) {
+//    const vector<int>& shape = net_params[i]->shape();
+//    temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+//  }
+}
+
+template <typename Dtype>
+void DucbSolver<Dtype>::BackupDataAndDiff() {
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<shared_ptr<Blob<Dtype> > >& temp_ = this->temp_;
+
+    switch (Caffe::mode()) {
+    case Caffe::CPU:
+      for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->cpu_data(),
+            temp_[param_id]->mutable_cpu_data());
+
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->cpu_diff(),
+            temp_[param_id]->mutable_cpu_diff());
+      }
+      break;
+    case Caffe::GPU:
+  #ifndef CPU_ONLY
+      for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->gpu_data(),
+            temp_[param_id]->mutable_gpu_data());
+
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->gpu_diff(),
+            temp_[param_id]->mutable_gpu_diff());
+      }
+  #else
+      NO_GPU;
+  #endif
+      break;
+    default:
+      LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+    }
+
+}
+
+template <typename Dtype>
+Dtype DucbSolver<Dtype>::PrepareJumpFromBackup(Dtype next_alpha) {
+  // this method assumes that each net_param is undefined, that temp_.data is
+  // at theta and that each temp_.diff is at grad(theta)
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<shared_ptr<Blob<Dtype> > >& temp_ = this->temp_;
+
+  const vector<float>& net_params_lr = this->net_->params_lr();
+
+  // copy from data/diff
+  switch (Caffe::mode()) {
+    case Caffe::CPU:
+      for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->cpu_data(),
+            temp_[param_id]->mutable_cpu_data());
+
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->cpu_diff(),
+            temp_[param_id]->mutable_cpu_diff());
+
+      }
+      break;
+    case Caffe::GPU:
+  #ifndef CPU_ONLY
+      for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->gpu_data(),
+            temp_[param_id]->mutable_gpu_data());
+
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->gpu_diff(),
+            temp_[param_id]->mutable_gpu_diff());
+      }
+  #else
+      NO_GPU;
+  #endif
+      break;
+    default:
+      LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+
+  // scale diff
+  for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+    Dtype local_alpha = next_alpha * net_params_lr[param_id];
+    net_params[param_id]->scale_diff(local_alpha);
+  }
+
+  return next_alpha;
+}
+
+template <typename Dtype>
+Dtype DucbSolver<Dtype>::PrepareJumpToAlpha(Dtype param_alpha_next,
+    Dtype param_alpha_current, Dtype grad_alpha_current) {
+  // this method assumes that each net_param.data is at
+  // theta - param_alpha_current * grad(theta) and that each net_param.diff is
+  // at grad_alpha_current * grad(theta) where theta represents net_param.data
+  // at the beginning of this iteration.
+  //
+  // it leaves data at theta - param_alpha_next * grad(theta) and diff at
+  // (param_alpha_next - param_alpha_current) * grad(theta) so that running
+  // update on the net will leave the params at theta - param_alpha_next *
+  // grad(theta)
+  //
+  // note that this update will leave local_rate multipliers intact without
+  // having to deal with them explicitly (work out the algebra to convince
+  // yourself of this)
+  //
+  // returns (param_alpha_next - param_alpha_current), the final multiplier to
+  // grad(theta) in diff.
+
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const Dtype grad_multiplier =
+      (param_alpha_next - param_alpha_current) / grad_alpha_current;
+
+  for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+    net_params[param_id]->scale_diff(grad_multiplier);
+  }
+
+  return param_alpha_next - param_alpha_current;
 }
 
 
+template <typename Dtype>
+void DucbSolver<Dtype>::ComputeUpdateValue() {
+
+  // get the learning rate
+  int start_ind = GetStartingLrIndex();
+  Dtype alpha = alphas_->at(start_ind);
+  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
+    LOG(INFO) << "Iteration " << this->iter_ << ", lr = " << alpha;
+  }
+
+  // perform L1 or L2 regularization
+  RegularizeGradient();
+
+  BackupDataAndDiff();
+
+  // ForwardFrom(1) prevents updating the input data in the bottom layer
+  shared_ptr<Net<Dtype> > net = this->net();
+  Dtype best_obj = this->net()->ForwardFrom(1);
+
+  Dtype best_alpha = Dtype(0);
+
+  Dtype starting_obj = best_obj;
+  Dtype obj = best_obj;
+  Dtype prev_obj;
+
+  Dtype alpha_param_current = Dtype(0);
+  Dtype alpha_grad_current = Dtype(1);
+
+  bool have_found_better = false;
+  for (int i = start_ind; i < n_alphas; ++i) {
+    prev_obj = obj;
+    alpha = alphas_->at(i);
+    alpha_grad_current =
+        PrepareJumpToAlpha(alpha, alpha_param_current, alpha_grad_current);
+    net->Update();  // execute the jump
+    alpha_param_current = alpha;
+
+    obj = this->net()->ForwardFrom(1);
+
+    // TODO: DEAL WITH INF/NAN OBJECTIVE.  Restore from backup
+
+    GrantReward(starting_obj, obj, i);
+
+    if (obj < best_obj) {
+      best_obj = obj; best_alpha = alpha; have_found_better = true;
+    }
+
+    // objective went down and started to go up again; break.
+    if (have_found_better and obj > prev_obj) { break; }
+  }
+
+  // we don't need to keep the new alpha_grad_current because we're done with
+  // this minibatch
+  PrepareJumpToAlpha(best_alpha, alpha_param_current, alpha_grad_current);
+  net->Update();  // execute the jump
+
+}
+
+template <typename Dtype>
+int DucbSolver<Dtype>::GetStartingLrIndex() {
+  if (init_sweep_ind < n_alphas)
+    return init_sweep_ind++;
+
+  Dtype n_total = 0;
+  for (int i = 0; i < n_alphas; ++i) {
+    (*rewards_)[i] *= ducb_gamma;
+    (*numbers_)[i] *= ducb_gamma;
+    n_total += (*numbers_)[i];
+  }
+
+  int best_ind = 0;
+  Dtype best_j = std::numeric_limits<Dtype>::min();
+  Dtype j;
+
+//  std::cout << "GetStartingLrIndex starting second loop" << "\n";
+  for (int i = 0; i < n_alphas; ++i) {
+    assert((*numbers_)[i] > 0);
+    (*mus_)[i] = (*rewards_)[i] / (*numbers_)[i];
+    (*cs_)[i] = sqrt(explore_const * log(n_total) / (*numbers_)[i]);
+    j = (*mus_)[i] + (*cs_)[i];
+    (*js_)[i] = j;
+    assert(!isnan(j));
+    if (j > best_j) { best_j = j; best_ind = i; }
+  }
+
+  return best_ind;
+}
+
+
+template <typename Dtype>
+void DucbSolver<Dtype>::GrantReward(Dtype old_obj,
+    Dtype new_obj, int alpha_index) {
+  Dtype stability_const = 1e-15;
+  Dtype reward_amount =
+      log(old_obj + stability_const) - log(new_obj + stability_const);
+
+  assert(!isnan(reward_amount));
+  assert(alpha_index < n_alphas && alpha_index >= 0);
+  (*numbers_)[alpha_index] += 1;
+  (*rewards_)[alpha_index] += reward_amount;
+  return;
+}
 
 INSTANTIATE_CLASS(Solver);
 INSTANTIATE_CLASS(SGDSolver);

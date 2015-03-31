@@ -169,38 +169,46 @@ class DucbSolver : public SGDSolver<Dtype> {
  protected:
   virtual void PreSolve();
   virtual void ComputeUpdateValue();
-//  void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
-//  void GetStartingLrIndex();
-//  void JumpToAlpa(Dtype next_alpha, Dtype param_alpha_current, Dtype grad_alpha_current);
-//  void JumpFromBackup(Dtype next_alpha);
-//  void JumpFromZero(Dtype next_alpha);
-  void constructor_sanity_check() {
-// 	  // TODO: fill in
-//    CHECK_EQ(0, this->param_.base_lr())
-//        << "Learning rate cannot be used with AdaDelta.";
-//    CHECK_EQ("", this->param_.lr_policy())
-//        << "Learning rate policy cannot be applied to AdaDelta.";
-  }
+  void RegularizeGradient();
+
+  void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
+  int GetStartingLrIndex();
+
+  // back up net_params.data and net_params.diff to temp_.data and temp_.diff
+  // for easy restoration in case the main copy fills with NaNs
+  void BackupDataAndDiff();
+
+  Dtype PrepareJumpFromBackup(Dtype next_alpha);
+
+  //  takes param.diff from grad_alpha_current to
+  // (param_alpha_next - param_alpha_current) * grad(theta) so that a
+  // subsequent call to net.update() will move
+  // param.data from theta - param_alpha_current * grad(theta) to
+  // theta - param_alpha_next * grad(theta).  returns the new gradient
+  // multiplier
+  Dtype PrepareJumpToAlpha(Dtype param_alpha_next,
+      Dtype param_alpha_current, Dtype grad_alpha_current);
 
   // make a vector of logarithmically spaced values
   void LogSpace(shared_ptr<vector<Dtype> > vect, Dtype log_high_alpha = 2,
       Dtype log_low_alpha = -6, int n_alphas = 33, Dtype base = 10);
 
-//  // get the value from a Blob vector which is stored at a given index
-//  Dtype GetBlobVect(shared_ptr<Blob<Dtype> >& blob_vect, int index) {
-//    return blob_vect->cpu_data()[blob_vect->offset(0,0,0,index)];
-//  }
-//
-//  // set the value on a Blob vector which is stored at a given index
-//  void SetBlobVect(shared_ptr<Blob<Dtype> >& blob_vect, int index, Dtype val) {
-//    blob_vect->mutable_cpu_data()[blob_vect->offset(0,0,0,index)] = val;
-//  }
+  void constructor_sanity_check() {
+ 	  // TODO: fill in
+    CHECK_EQ(0, this->param_.base_lr())
+        << "Learning rate cannot be used with DucbSolver.";
+    CHECK_EQ("", this->param_.lr_policy())
+        << "Learning rate policy cannot be applied to DucbSolver.";
+  }
 
-  // alphas_ maintains a set of all the learning rates we are willing to consider
+  // alphas_ is the set of all the learning rates we will consider
   // rewards_ tracks the reward values for each alpha
   // numbers_ tracks the number of times each alpha has been played
   // all three are needed in the snapshot
-  shared_ptr<vector<Dtype> > alphas_, rewards_, numbers_;
+  shared_ptr<vector<Dtype> > alphas_, rewards_, numbers_, mus_, cs_, js_;
+
+//  // used for storing temporary update values.  not needed in snapshot
+//  vector<shared_ptr<Blob<Dtype> > > temp_;
 
   // the DUCB algorithm performs an initial sweep of all possible alpha values
   // at the start of each training run.  init_sweep_ind tracks the index of the
@@ -215,7 +223,7 @@ class DucbSolver : public SGDSolver<Dtype> {
   Dtype log_high_alpha;
   // number of learning rates to be log-interpolated between log_low_alpha and log_high_alpha.
   // default: 33
-  int n_alphas;
+  Dtype n_alphas;
 
 
   // DUCB hyperparameters
@@ -228,8 +236,7 @@ class DucbSolver : public SGDSolver<Dtype> {
   // default: 1e-8
   Dtype explore_const;
 
-
-    DISABLE_COPY_AND_ASSIGN(DucbSolver);
+  DISABLE_COPY_AND_ASSIGN(DucbSolver);
 };
 
 
