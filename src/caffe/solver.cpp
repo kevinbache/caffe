@@ -1258,14 +1258,14 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
 
   BackupDataAndDiff();
 
-  // ForwardFrom(1) prevents updating the input data in the bottom layer
   shared_ptr<Net<Dtype> > net = this->net();
-  Dtype best_obj = this->net()->ForwardFrom(1);
+  // ForwardFrom(1) prevents updating the input data in the bottom layer
+  Dtype starting_obj = this->net()->ForwardFrom(1);
 
   Dtype best_alpha = Dtype(0);
 
-  Dtype starting_obj = best_obj;
-  Dtype obj = best_obj;
+  Dtype best_obj = starting_obj;
+  Dtype obj = starting_obj;
   Dtype prev_obj;
 
   Dtype alpha_param_current = Dtype(0);
@@ -1290,7 +1290,8 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
       best_obj = obj; best_alpha = alpha; have_found_better = true;
     }
 
-    // objective went down and started to go up again; break.
+    // the objective has dipped below the starting value and started to rise
+    //  again. terminate line search for this minibatch.
     if (have_found_better and obj > prev_obj) { break; }
   }
 
