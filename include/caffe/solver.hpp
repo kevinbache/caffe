@@ -96,6 +96,8 @@ class SGDSolver : public Solver<Dtype> {
   virtual void ClipGradients();
   virtual void SnapshotSolverState(SolverState * state);
   virtual void RestoreSolverState(const SolverState& state);
+  Dtype GetDiffNorm();
+
   // history maintains the historical momentum data.
   // update maintains update related data and is not needed in snapshots.
   // temp maintains other information that might be needed in computation
