@@ -88,7 +88,7 @@ message NetParameter {
 // NOTE
 // Update the next available ID when you add a new SolverParameter field.
 //
-// SolverParameter next available ID: 41 (last added: explore_const)
+// SolverParameter next available ID: 42 (last added: explore_const)
 message SolverParameter {
   //////////////////////////////////////////////////////////////////////////////
   // Specifying the train and test networks
@@ -157,6 +157,9 @@ message SolverParameter {
   // Set clip_gradients to >= 0 to clip parameter gradients to that L2 norm,
   // whenever their actual L2 norm is larger.
   optional float clip_gradients = 35 [default = -1];
+  // Track and log the average L2 norm of minibatch gradients.  Disable for a 
+  // slight performance increase.  
+  optional bool log_avg_gradient_norm = 36 [default = true];
 
   optional int32 snapshot = 14 [default = 0]; // The snapshot interval
   optional string snapshot_prefix = 15; // The prefix for the snapshot.
@@ -199,15 +202,15 @@ message SolverParameter {
   // DUCBSolver parameters //
   ///////////////////////////  
   // the (base-10) log of the highest learning rate value for the DUCBSolver to consider
-  optional float log_high_alpha = 36 [default = 2];    
+  optional float log_high_alpha = 37 [default = 2];    
   // the (base-10) log of the lowest learning rate value for the DUCBSolver to consider
-  optional float log_low_alpha = 37 [default = -6];    
+  optional float log_low_alpha = 38 [default = -6];    
   // the number of log-spaced learning rates to be created between log_high_alpha and log_low_alpha
-  optional int32 n_alphas = 38 [default = 33];        
+  optional int32 n_alphas = 39 [default = 33];        
   // DUCB forgetting constant.  higher value means less forgetting.
-  optional float ducb_gamma = 39 [default = 0.99];       
+  optional float ducb_gamma = 40 [default = 0.99];       
   // DUCB explore constant.  higher value means more exploration
-  optional float explore_const = 40 [default = 1e-8];  
+  optional float explore_const = 41 [default = 1e-8];  
 }
 
 // A message that stores the solver snapshots
