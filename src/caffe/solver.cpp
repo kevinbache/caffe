@@ -1287,8 +1287,8 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
   int start_ind = GetStartingLrIndex();
   Dtype alpha_start = alphas_->at(start_ind);
 
-  // track the norm of the gradient
-  Dtype grad_norm = this->GetGradNorm();
+  this->TrackAvgGradNorm();
+  this->DisplayIterInfo(alpha_start);
 
   // perform L1 or L2 regularization
   RegularizeGradient();
@@ -1333,14 +1333,15 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
     if (have_found_better and obj > prev_obj) { break; }
   }
 
-  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
-    LOG(INFO) << "Iteration " << this->iter_ << \
-        ", starting lr = " << alpha_start << \
-        ", final lr = " << best_alpha << \
-        ", starting obj = " << starting_obj << \
-        ", final obj = " << best_obj << \
-        ", grad norm = " << grad_norm;
-  }
+//  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
+
+//    LOG(INFO) << "Iteration " << this->iter_ << \
+//        ", starting lr = " << alpha_start << \
+//        ", final lr = " << best_alpha << \
+//        ", starting obj = " << starting_obj << \
+//        ", final obj = " << best_obj << \
+//        ", grad norm = " << grad_norm;
+//  }
 
 
   // we don't need to keep the new alpha_grad_current because we're done with
