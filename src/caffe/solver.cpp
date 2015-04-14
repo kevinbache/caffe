@@ -1,16 +1,27 @@
-#include <cstdio>
+#include "../../include/caffe/solver.hpp"
 
+#include <math.h> // for isnan, log
 #include <algorithm>
+#include <cstdio>
 #include <string>
 #include <vector>
-#include <math.h> // for isnan, log
 
-#include "caffe/net.hpp"
-#include "caffe/proto/caffe.pb.h"
-#include "caffe/solver.hpp"
-#include "caffe/util/io.hpp"
-#include "caffe/util/math_functions.hpp"
-#include "caffe/util/upgrade_proto.hpp"
+#include "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/limits"
+#include "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/ostream"
+#include "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/sstream"
+#include "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/string"
+#include "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/vector"
+#include "/usr/include/assert.h"
+#include "/usr/include/math.h"
+#include "/usr/include/stdio.h"
+#include "/usr/include/sys/_types/_size_t.h"
+#include "/usr/local/Cellar/boost/1.57.0/include/boost/shared_ptr.hpp"
+#include "/usr/local/Cellar/glog/0.3.3/include/glog/logging.h"
+#include "../../.build_release/src/caffe/proto/caffe.pb.h"
+#include "../../include/caffe/blob.hpp"
+#include "../../include/caffe/common.hpp"
+#include "../../include/caffe/util/io.hpp"
+#include "../../include/caffe/util/upgrade_proto.hpp"
 
 
 namespace caffe {
@@ -1043,13 +1054,13 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
 }
 
 template<typename Dtype>
-void DucbSolver<Dtype>::LogSpace(shared_ptr<vector<Dtype > > vect,
+void DucbSolver<Dtype>::LogSpace(vector<Dtype > & vect,
     Dtype log_high_alpha, Dtype log_low_alpha, int n_alphas, Dtype base) {
-  vect->clear();
+  vect.clear();
   Dtype delta = (log_high_alpha - log_low_alpha) / (n_alphas - 1);
   for (int i = 0; i < n_alphas; ++i) {
     Dtype linear_val = log_high_alpha - i * delta;
-    vect->push_back(pow(base, linear_val));
+    vect.push_back(pow(base, linear_val));
   }
 }
 
@@ -1136,16 +1147,16 @@ void DucbSolver<Dtype>::PreSolve() {
   ducb_gamma = this->param_.ducb_gamma();
   explore_const = this->param_.explore_const();
 
-  alphas_ = shared_ptr<vector<Dtype> >(new vector<Dtype>);
   LogSpace(alphas_, log_high_alpha, log_low_alpha, n_alphas);
+  PRINT_VECTOR(alphas_, Dtype)
 
   // sufficient statistics for the bandit model
-  rewards_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
-  numbers_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
+  rewards_.resize(n_alphas);
+  numbers_.resize(n_alphas);
 
-  mus_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
-  cs_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
-  js_ = shared_ptr<vector<Dtype> > (new vector<Dtype>(n_alphas));
+  mus_.resize(n_alphas);
+  cs_.resize(n_alphas);
+  js_.resize(n_alphas);
 
   init_sweep_ind = 0;
 
@@ -1285,7 +1296,7 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
 
   // get the learning rate
   int start_ind = GetStartingLrIndex();
-  Dtype alpha_start = alphas_->at(start_ind);
+  Dtype alpha_start = alphas_.at(start_ind);
 
   this->TrackAvgGradNorm();
   this->DisplayIterInfo(alpha_start);
@@ -1312,7 +1323,7 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
   bool have_found_better = false;
   for (int i = start_ind; i < n_alphas; ++i) {
     prev_obj = obj;
-    alpha = alphas_->at(i);
+    alpha = alphas_.at(i);
     alpha_grad_current =
         PrepareJumpToAlpha(alpha, alpha_param_current, alpha_grad_current);
     net->Update();  // execute the jump
@@ -1334,7 +1345,6 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
   }
 
 //  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
-
 //    LOG(INFO) << "Iteration " << this->iter_ << \
 //        ", starting lr = " << alpha_start << \
 //        ", final lr = " << best_alpha << \
@@ -1343,12 +1353,10 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
 //        ", grad norm = " << grad_norm;
 //  }
 
-
-  // we don't need to keep the new alpha_grad_current because we're done with
-  // this minibatch
+  // we don't need to keep the new, outputted alpha_grad_current because
+  // we're done with this minibatch
   PrepareJumpToAlpha(best_alpha, alpha_param_current, alpha_grad_current);
   net->Update();  // execute the jump
-
 }
 
 template <typename Dtype>
@@ -1358,22 +1366,21 @@ int DucbSolver<Dtype>::GetStartingLrIndex() {
 
   Dtype n_total = 0;
   for (int i = 0; i < n_alphas; ++i) {
-    (*rewards_)[i] *= ducb_gamma;
-    (*numbers_)[i] *= ducb_gamma;
-    n_total += (*numbers_)[i];
+    rewards_[i] *= ducb_gamma;
+    numbers_[i] *= ducb_gamma;
+    n_total += numbers_[i];
   }
 
   int best_ind = 0;
   Dtype best_j = std::numeric_limits<Dtype>::min();
   Dtype j;
 
-//  std::cout << "GetStartingLrIndex starting second loop" << "\n";
   for (int i = 0; i < n_alphas; ++i) {
-    assert((*numbers_)[i] > 0);
-    (*mus_)[i] = (*rewards_)[i] / (*numbers_)[i];
-    (*cs_)[i] = sqrt(explore_const * log(n_total) / (*numbers_)[i]);
-    j = (*mus_)[i] + (*cs_)[i];
-    (*js_)[i] = j;
+    assert(numbers_[i] > 0);
+    mus_[i] = rewards_[i] / numbers_[i];
+    cs_[i] = sqrt(explore_const * log(n_total) / numbers_[i]);
+    j = mus_[i] + cs_[i];
+    js_[i] = j;
     assert(!isnan(j));
     if (j > best_j) { best_j = j; best_ind = i; }
   }
@@ -1391,8 +1398,8 @@ void DucbSolver<Dtype>::GrantReward(Dtype old_obj,
 
   assert(!isnan(reward_amount));
   assert(alpha_index < n_alphas && alpha_index >= 0);
-  (*numbers_)[alpha_index] += 1;
-  (*rewards_)[alpha_index] += reward_amount;
+  numbers_[alpha_index] += 1;
+  rewards_[alpha_index] += reward_amount;
   return;
 }
 

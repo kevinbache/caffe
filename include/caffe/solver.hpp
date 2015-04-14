@@ -15,7 +15,7 @@
 
 // print the contents of a vector
 #define PRINT_VECTOR(v, Dtype) \
-  std::copy(v->begin(), v->end(), std::ostream_iterator<Dtype>(std::cout, " ")); \
+  std::copy(v.begin(), v.end(), std::ostream_iterator<Dtype>(std::cout, " ")); \
   std::cout << "\n";
 
 namespace caffe {
@@ -197,7 +197,7 @@ class DucbSolver : public SGDSolver<Dtype> {
       Dtype param_alpha_current, Dtype grad_alpha_current);
 
   // make a vector of logarithmically spaced values
-  void LogSpace(shared_ptr<vector<Dtype> > vect, Dtype log_high_alpha = 2,
+  void LogSpace(vector<Dtype> & vect, Dtype log_high_alpha = 2,
       Dtype log_low_alpha = -6, int n_alphas = 33, Dtype base = 10);
 
   void constructor_sanity_check() {
@@ -212,7 +212,7 @@ class DucbSolver : public SGDSolver<Dtype> {
   // rewards_ tracks the reward values for each alpha
   // numbers_ tracks the number of times each alpha has been played
   // all three are needed in the snapshot
-  shared_ptr<vector<Dtype> > alphas_, rewards_, numbers_, mus_, cs_, js_;
+  vector<Dtype> alphas_, rewards_, numbers_, mus_, cs_, js_;
 
 //  // used for storing temporary update values.  not needed in snapshot
 //  vector<shared_ptr<Blob<Dtype> > > temp_;
