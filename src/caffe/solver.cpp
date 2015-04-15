@@ -1403,6 +1403,91 @@ void DucbSolver<Dtype>::GrantReward(Dtype old_obj,
   return;
 }
 
+template <typename Dtype>
+void DucbSolver<Dtype>::SetInOneDimBlob(
+    shared_ptr<Blob<Dtype> >& blob_vect, int index, Dtype val) {
+  blob_vect->mutable_cpu_data()[blob_vect->offset(0,0,0,index)] = val;
+}
+
+//// get the value from a Blob vector which is stored at a given index
+template <typename Dtype>
+Dtype DucbSolver<Dtype>::GetFromOneDimBlob(
+    shared_ptr<Blob<Dtype> >& blob_vect, int index) {
+  return blob_vect->cpu_data()[blob_vect->offset(0,0,0,index)];
+}
+
+template <typename Dtype>
+shared_ptr<Blob<Dtype> > DucbSolver<Dtype>::Vect2Blob(const vector<Dtype> & vect) {
+  int n_elements = vect.size();
+  shared_ptr<Blob<Dtype> > blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>(1, 1, 1, n_elements));
+  for (int i = 0; i < n_elements; ++i) {
+    DucbSolver<Dtype>::SetInOneDimBlob(blob, i, vect.at(i));
+  }
+  return blob;
+}
+
+template <typename Dtype>
+vector<Dtype> * DucbSolver<Dtype>::Blob2Vect(shared_ptr<Blob<Dtype> > & blob) {
+  vector<Dtype> * vect = new vector<Dtype>();
+  assert(blob.shape(0) == 1);
+  assert(blob.shape(1) == 1);
+  assert(blob.shape(2) == 1);
+
+  int n_elements = blob->shape(3);
+  for (int i = 0; i < n_elements; ++i) {
+    vect->push_back(DucbSolver<Dtype>::GetFromOneDimBlob(blob, i));
+  }
+
+  return vect;
+}
+
+template <typename Dtype>
+void DucbSolver<Dtype>::SnapshotSolverState(SolverState* state) {
+  // convert vectors to blobs so they can be saved
+  shared_ptr<Blob<Dtype> > alphas_blob = this->Vect2Blob(alphas_);
+  shared_ptr<Blob<Dtype> > rewards_blob = this->Vect2Blob(rewards_);
+  shared_ptr<Blob<Dtype> > numbers_blob = this->Vect2Blob(numbers_);
+
+  // save blob versions of alphas, rewards, and numbers into SolverState
+  state->clear_history();
+
+  BlobProto* save_blob = state->add_history();
+  alphas_blob->ToProto(save_blob);
+
+  save_blob = state->add_history();
+  rewards_blob->ToProto(save_blob);
+
+  save_blob = state->add_history();
+  numbers_blob->ToProto(save_blob);
+}
+
+template <typename Dtype>
+void DucbSolver<Dtype>::RestoreSolverState(const SolverState& state) {
+  CHECK_EQ(state.history_size(), 3)
+      << "SolverState should have exactly 3 elements in its history:\n" \
+          "1-dimensional blobs representing alphas, rewards, and numbers.\n" \
+          "Instead found: " << state.history_size() ;
+  LOG(INFO) << "DucbSolver: restoring history";
+
+  shared_ptr<Blob<Dtype> > alphas_blob, rewards_blob, numbers_blob;
+
+  alphas_blob->FromProto(state.history(0));
+  rewards_blob->FromProto(state.history(1));
+  numbers_blob->FromProto(state.history(2));
+
+  int n_loaded = alphas_blob->shape(3);
+  int n_expected = alphas_.size();
+  CHECK_EQ(n_loaded, n_expected)
+    << "SolverState file with " << n_loaded << " alpha values loaded into " \
+    "DucbSolver which was set to have " << n_expected << "possible alphas";
+
+  alphas_ = *Blob2Vect(alphas_blob);
+  rewards_ = *Blob2Vect(rewards_blob);
+  numbers_ = *Blob2Vect(numbers_blob);
+}
+
+
 INSTANTIATE_CLASS(Solver);
 INSTANTIATE_CLASS(SGDSolver);
 INSTANTIATE_CLASS(NesterovSolver);

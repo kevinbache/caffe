@@ -61,7 +61,9 @@ class Solver {
   // The test routine
   void TestAll();
   void Test(const int test_net_id = 0);
+ public:
   virtual void SnapshotSolverState(SolverState* state) = 0;
+ protected:
   virtual void RestoreSolverState(const SolverState& state) = 0;
   void DisplayOutputBlobs(const int net_id);
 
@@ -100,7 +102,9 @@ class SGDSolver : public Solver<Dtype> {
   int n_grad_norm_iters;
   virtual void ComputeUpdateValue();
   virtual void ClipGradients();
-  virtual void SnapshotSolverState(SolverState * state);
+ public:
+  virtual void SnapshotSolverState(SolverState* state);
+ protected:
   virtual void RestoreSolverState(const SolverState& state);
 
   // history maintains the historical momentum data.
@@ -176,6 +180,10 @@ class DucbSolver : public SGDSolver<Dtype> {
  protected:
   virtual void PreSolve();
   virtual void ComputeUpdateValue();
+ public:
+  virtual void SnapshotSolverState(SolverState* state);
+  virtual void RestoreSolverState(const SolverState& state);
+ protected:
   void RegularizeGradient();
 
   void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
@@ -197,8 +205,15 @@ class DucbSolver : public SGDSolver<Dtype> {
       Dtype param_alpha_current, Dtype grad_alpha_current);
 
   // make a vector of logarithmically spaced values
-  void LogSpace(vector<Dtype> & vect, Dtype log_high_alpha = 2,
+  void LogSpace(vector<Dtype>& vect, Dtype log_high_alpha = 2,
       Dtype log_low_alpha = -6, int n_alphas = 33, Dtype base = 10);
+
+  // convenience methods for converting between vectors and 1-dimensional blobs
+  static shared_ptr<Blob<Dtype> > Vect2Blob(const vector<Dtype> & vect);
+  static vector<Dtype> * Blob2Vect(shared_ptr<Blob<Dtype> > & blob);
+  static void SetInOneDimBlob(shared_ptr<Blob<Dtype> >& blob,
+      int index, Dtype val);
+  static Dtype GetFromOneDimBlob(shared_ptr<Blob<Dtype> >& blob, int index);
 
   void constructor_sanity_check() {
  	  // TODO: fill in
@@ -231,7 +246,6 @@ class DucbSolver : public SGDSolver<Dtype> {
   // number of learning rates to be log-interpolated between log_low_alpha and log_high_alpha.
   // default: 33
   Dtype n_alphas;
-
 
   // DUCB hyperparameters
   // forgetting factor, \in [0, 1].
