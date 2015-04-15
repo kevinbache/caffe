@@ -1,28 +1,14 @@
-#include "../../include/caffe/solver.hpp"
-
-#include <math.h> // for isnan, log
-#include <algorithm>
 #include <cstdio>
+#include <algorithm>
 #include <string>
 #include <vector>
-
-#include "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/limits"
-#include "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/ostream"
-#include "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/sstream"
-#include "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/string"
-#include "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/vector"
-#include "/usr/include/assert.h"
-#include "/usr/include/math.h"
-#include "/usr/include/stdio.h"
-#include "/usr/include/sys/_types/_size_t.h"
-#include "/usr/local/Cellar/boost/1.57.0/include/boost/shared_ptr.hpp"
-#include "/usr/local/Cellar/glog/0.3.3/include/glog/logging.h"
-#include "../../.build_release/src/caffe/proto/caffe.pb.h"
-#include "../../include/caffe/blob.hpp"
-#include "../../include/caffe/common.hpp"
-#include "../../include/caffe/util/io.hpp"
-#include "../../include/caffe/util/upgrade_proto.hpp"
-
+#include <math.h> // for isnan, log
+#include "caffe/net.hpp"
+#include "caffe/proto/caffe.pb.h"
+#include "caffe/solver.hpp"
+#include "caffe/util/io.hpp"
+#include "caffe/util/math_functions.hpp"
+#include "caffe/util/upgrade_proto.hpp"
 
 namespace caffe {
 
@@ -1148,7 +1134,6 @@ void DucbSolver<Dtype>::PreSolve() {
   explore_const = this->param_.explore_const();
 
   LogSpace(alphas_, log_high_alpha, log_low_alpha, n_alphas);
-  PRINT_VECTOR(alphas_, Dtype)
 
   // sufficient statistics for the bandit model
   rewards_.resize(n_alphas);
@@ -1470,7 +1455,12 @@ void DucbSolver<Dtype>::RestoreSolverState(const SolverState& state) {
           "Instead found: " << state.history_size() ;
   LOG(INFO) << "DucbSolver: restoring history";
 
-  shared_ptr<Blob<Dtype> > alphas_blob, rewards_blob, numbers_blob;
+  shared_ptr<Blob<Dtype> > alphas_blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>());
+  shared_ptr<Blob<Dtype> > rewards_blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>());
+  shared_ptr<Blob<Dtype> > numbers_blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>());
 
   alphas_blob->FromProto(state.history(0));
   rewards_blob->FromProto(state.history(1));
@@ -1485,6 +1475,11 @@ void DucbSolver<Dtype>::RestoreSolverState(const SolverState& state) {
   alphas_ = *Blob2Vect(alphas_blob);
   rewards_ = *Blob2Vect(rewards_blob);
   numbers_ = *Blob2Vect(numbers_blob);
+
+  // setting init_sweep_ind to n_expected means that we are assuming that the
+  // DucbSolver was run for at least n_expected iterations before the snapshot
+  // was taken.  this should toe a reasonable assumption in practice.
+  init_sweep_ind = n_expected;
 }
 
 

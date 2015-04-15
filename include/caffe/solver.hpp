@@ -61,9 +61,7 @@ class Solver {
   // The test routine
   void TestAll();
   void Test(const int test_net_id = 0);
- public:
   virtual void SnapshotSolverState(SolverState* state) = 0;
- protected:
   virtual void RestoreSolverState(const SolverState& state) = 0;
   void DisplayOutputBlobs(const int net_id);
 
@@ -102,9 +100,7 @@ class SGDSolver : public Solver<Dtype> {
   int n_grad_norm_iters;
   virtual void ComputeUpdateValue();
   virtual void ClipGradients();
- public:
   virtual void SnapshotSolverState(SolverState* state);
- protected:
   virtual void RestoreSolverState(const SolverState& state);
 
   // history maintains the historical momentum data.
@@ -180,10 +176,8 @@ class DucbSolver : public SGDSolver<Dtype> {
  protected:
   virtual void PreSolve();
   virtual void ComputeUpdateValue();
- public:
   virtual void SnapshotSolverState(SolverState* state);
   virtual void RestoreSolverState(const SolverState& state);
- protected:
   void RegularizeGradient();
 
   void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
