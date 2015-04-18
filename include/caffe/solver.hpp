@@ -2,8 +2,8 @@
 #define CAFFE_OPTIMIZATION_SOLVER_HPP_
 
 #include <string>
-#include <vector>
 
+#include <vector>
 #include "caffe/net.hpp"
 
 // print the contents of a unidimensional blob.  used for debugging.

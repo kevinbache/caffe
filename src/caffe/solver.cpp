@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include <limits>
 #include <math.h> // for isnan, log
 #include "caffe/net.hpp"
 #include "caffe/proto/caffe.pb.h"
