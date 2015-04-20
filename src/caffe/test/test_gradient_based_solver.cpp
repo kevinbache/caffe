@@ -577,4 +577,27 @@ TYPED_TEST(AdaDeltaSolverTest, TestAdaDeltaLeastSquaresUpdateWithEverything) {
   }
 }
 
+template <typename TypeParam>
+class DucbSolverTest : public GradientBasedSolverTest<TypeParam> {
+  typedef typename TypeParam::Dtype Dtype;
+
+ protected:
+  virtual void InitSolver(const SolverParameter& param) {
+    this->solver_.reset(new DucbSolver<Dtype>(param));
+  }
+  virtual SolverParameter_SolverType solver_type() {
+    return SolverParameter_SolverType_DUCB;
+  }
+};
+TYPED_TEST_CASE(DucbSolverTest, TestDtypesAndDevices);
+
+TYPED_TEST(DucbSolverTest, TestVect2BlobBlob2Vect) {
+  typedef typename TypeParam::Dtype Dtype;
+  shared_ptr<Blob<Dtype> > blob;
+  vector<Dtype> vect;
+  vect.push_back(2.3); //some random number
+  vect.push_back(4.5);
+}
+
+
 }  // namespace caffe
