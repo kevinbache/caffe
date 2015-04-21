@@ -49,6 +49,7 @@ class Solver {
     return test_nets_;
   }
   int iter() { return iter_; }
+  void Snapshot();
 
  protected:
   // Get the update value for the current iteration.
@@ -57,12 +58,12 @@ class Solver {
   // that stores the learned net. You should implement the SnapshotSolverState()
   // function that produces a SolverState protocol buffer that needs to be
   // written to disk together with the learned net.
-  void Snapshot();
   // The test routine
   void TestAll();
   void Test(const int test_net_id = 0);
   virtual void SnapshotSolverState(SolverState* state) = 0;
   virtual void RestoreSolverState(const SolverState& state) = 0;
+
   void DisplayOutputBlobs(const int net_id);
 
   SolverParameter param_;
@@ -88,6 +89,8 @@ class SGDSolver : public Solver<Dtype> {
       : Solver<Dtype>(param_file) { PreSolve(); }
 
   const vector<shared_ptr<Blob<Dtype> > >& history() { return history_; }
+  virtual void SnapshotSolverState(SolverState* state);
+  virtual void RestoreSolverState(const SolverState& state);
 
  protected:
   Dtype GetLearningRate();
@@ -100,8 +103,6 @@ class SGDSolver : public Solver<Dtype> {
   int n_grad_norm_iters;
   virtual void ComputeUpdateValue();
   virtual void ClipGradients();
-  virtual void SnapshotSolverState(SolverState* state);
-  virtual void RestoreSolverState(const SolverState& state);
 
   // history maintains the historical momentum data.
   // update maintains update related data and is not needed in snapshots.
