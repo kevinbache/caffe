@@ -1145,6 +1145,9 @@ void DucbSolver<Dtype>::PreSolve() {
 
   init_sweep_ind = 0;
 
+// really i want this to replace the presolve from sgdsolver because
+// i don't want history_, only temp_.
+//
 //  // initialize temporary update memory to same size as net parameters
 //  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
 //  temp_ = this->temp_;
@@ -1305,6 +1308,8 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
   Dtype alpha_param_current = Dtype(0);
   Dtype alpha_grad_current = Dtype(1);
 
+  // perform a back-tracking line search from the DUCB model's starting alpha
+  // value
   bool have_found_better = false;
   for (int i = start_ind; i < n_alphas; ++i) {
     prev_obj = obj;
@@ -1321,6 +1326,9 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
     GrantReward(starting_obj, obj, i);
 
     if (obj < best_obj) {
+      // this gets triggered 1) when we first drop below the starting objective
+      // function value and 2) whenever we find a new, better objective
+      // function value
       best_obj = obj; best_alpha = alpha; have_found_better = true;
     }
 
