@@ -169,7 +169,6 @@ class Net {
   const shared_ptr<Blob<Dtype> > blob_by_name(const string& blob_name) const;
   bool has_layer(const string& layer_name) const;
   const shared_ptr<Layer<Dtype> > layer_by_name(const string& layer_name) const;
-
   void set_debug_info(const bool value) { debug_info_ = value; }
 
   // Helpers for Init.
@@ -182,6 +181,11 @@ class Net {
   /// @brief return whether NetState state meets NetStateRule rule
   static bool StateMeetsRule(const NetState& state, const NetStateRule& rule,
       const string& layer_name);
+
+  // @brief Tell each DropoutLayer that they should update its mask the next
+  // time forward pass is called.
+  void FlagDropoutLayersForUpdate();
+
 
  protected:
   // Helpers for Init.
@@ -218,6 +222,7 @@ class Net {
   vector<string> layer_names_;
   map<string, int> layer_names_index_;
   vector<bool> layer_need_backward_;
+  vector<bool> layer_is_dropout_;
   /// @brief the blobs storing intermediate results between the layer.
   vector<shared_ptr<Blob<Dtype> > > blobs_;
   vector<string> blob_names_;

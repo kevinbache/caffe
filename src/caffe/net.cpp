@@ -7,6 +7,7 @@
 
 #include "caffe/common.hpp"
 #include "caffe/layer.hpp"
+#include "caffe/neuron_layers.hpp"
 #include "caffe/net.hpp"
 #include "caffe/proto/caffe.pb.h"
 #include "caffe/util/insert_splits.hpp"
@@ -147,6 +148,11 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
         blob_need_backward_[top_id_vecs_[layer_id][top_id]] = true;
       }
     }
+    // Determine if this layer is a dropout layer.
+    DropoutLayer<Dtype>* layer_dropout_ptr =
+        dynamic_cast<DropoutLayer<Dtype>*> (layer);
+    bool layer_is_dropout = layer_dropout_ptr != NULL;
+    layer_is_dropout_.push_back(layer_is_dropout);
   }
   // Go through the net backwards to determine which blobs contribute to the
   // loss.  We can skip backward computation for blobs that don't contribute
@@ -811,6 +817,18 @@ const shared_ptr<Layer<Dtype> > Net<Dtype>::layer_by_name(
     LOG(WARNING) << "Unknown layer name " << layer_name;
   }
   return layer_ptr;
+}
+
+template <typename Dtype>
+void Net<Dtype>::FlagDropoutLayersForUpdate() {
+  DropoutLayer<Dtype>* layer_dropout_ptr;
+  for (int i = 0; i < layers_.size(); ++i) {
+    if (layer_is_dropout_[i]) {
+      layer_dropout_ptr = dynamic_cast<DropoutLayer<Dtype>*> (layers_[i].get());
+      assert(layer_dropout_ptr != NULL);
+      layer_dropout_ptr->FlagMaskForUpdate();
+    }
+  }
 }
 
 INSTANTIATE_CLASS(Net);

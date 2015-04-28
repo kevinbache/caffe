@@ -27,13 +27,22 @@ void DropoutLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
   Dtype* top_data = top[0]->mutable_gpu_data();
   const int count = bottom[0]->count();
   if (this->phase_ == TRAIN) {
-    unsigned int* mask =
-        static_cast<unsigned int*>(rand_vec_.mutable_gpu_data());
-    caffe_gpu_rng_uniform(count, mask);
-    // set thresholds
-    // NOLINT_NEXT_LINE(whitespace/operators)
-    DropoutForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
-        count, bottom_data, mask, uint_thres_, scale_, top_data);
+    if (update_masks_on_next_forward_) {
+      unsigned int* mask =
+          static_cast<unsigned int*>(rand_vec_.mutable_gpu_data());
+      caffe_gpu_rng_uniform(count, mask);
+      // set thresholds
+      // NOLINT_NEXT_LINE(whitespace/operators)
+      DropoutForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
+          count, bottom_data, mask, uint_thres_, scale_, top_data);
+    } else {
+      const unsigned int* mask =
+          static_cast<const unsigned int*>(rand_vec_.gpu_data());
+      // set thresholds
+      // NOLINT_NEXT_LINE(whitespace/operators)
+      DropoutForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
+          count, bottom_data, mask, uint_thres_, scale_, top_data);
+    }    
     CUDA_POST_KERNEL_CHECK;
   } else {
     caffe_copy(count, bottom_data, top_data);

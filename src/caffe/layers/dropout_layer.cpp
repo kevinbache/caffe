@@ -19,6 +19,7 @@ void DropoutLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
   DCHECK(threshold_ < 1.);
   scale_ = 1. / (1. - threshold_);
   uint_thres_ = static_cast<unsigned int>(UINT_MAX * threshold_);
+  update_masks_on_next_forward_ = true;
 }
 
 template <typename Dtype>
@@ -35,13 +36,22 @@ void DropoutLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
     const vector<Blob<Dtype>*>& top) {
   const Dtype* bottom_data = bottom[0]->cpu_data();
   Dtype* top_data = top[0]->mutable_cpu_data();
-  unsigned int* mask = rand_vec_.mutable_cpu_data();
   const int count = bottom[0]->count();
   if (this->phase_ == TRAIN) {
-    // Create random numbers
-    caffe_rng_bernoulli(count, 1. - threshold_, mask);
-    for (int i = 0; i < count; ++i) {
-      top_data[i] = bottom_data[i] * mask[i] * scale_;
+    // Only update random numbers if the update_masks_on_next_forward_
+    // flag has been set
+    if (update_masks_on_next_forward_) {
+      unsigned int*  mask = rand_vec_.mutable_cpu_data();
+      caffe_rng_bernoulli(count, 1. - threshold_, mask);
+      update_masks_on_next_forward_ = false;
+      for (int i = 0; i < count; ++i) {
+        top_data[i] = bottom_data[i] * mask[i] * scale_;
+      }
+    } else {
+      const unsigned int*  mask = rand_vec_.cpu_data();
+      for (int i = 0; i < count; ++i) {
+        top_data[i] = bottom_data[i] * mask[i] * scale_;
+      }
     }
   } else {
     caffe_copy(bottom[0]->count(), bottom_data, top_data);

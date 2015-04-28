@@ -168,6 +168,7 @@ class DropoutLayer : public NeuronLayer<Dtype> {
       const vector<Blob<Dtype>*>& top);
 
   virtual inline const char* type() const { return "Dropout"; }
+  void FlagMaskForUpdate() { update_masks_on_next_forward_ = true; } ;
 
  protected:
   /**
@@ -202,6 +203,7 @@ class DropoutLayer : public NeuronLayer<Dtype> {
   /// the scale for undropped inputs at train time @f$ 1 / (1 - p) @f$
   Dtype scale_;
   unsigned int uint_thres_;
+  bool update_masks_on_next_forward_;
 };
 
 /**
