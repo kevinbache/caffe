@@ -151,7 +151,12 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
     // Determine if this layer is a dropout layer.
     DropoutLayer<Dtype>* layer_dropout_ptr =
         dynamic_cast<DropoutLayer<Dtype>*> (layer);
-    bool layer_is_dropout = layer_dropout_ptr != NULL;
+    bool layer_is_dropout = (layer_dropout_ptr != NULL);
+    if (layer_is_dropout) {
+      LOG(INFO) << layer_names_[layer_id] << " is a dropout layer.";
+    } else {
+      LOG(INFO) << layer_names_[layer_id] << " is not a dropout layer.";
+    }
     layer_is_dropout_.push_back(layer_is_dropout);
   }
   // Go through the net backwards to determine which blobs contribute to the
