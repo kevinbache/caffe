@@ -206,6 +206,10 @@ void Solver<Dtype>::Step(int iters) {
         }
       }
     }
+
+    // DropoutLayers will persist their masks until told to update them.
+    // Tell the DropoutLayers to update their masks.
+    net_->FlagDropoutLayersForUpdate();
     ComputeUpdateValue();
     net_->Update();
 
