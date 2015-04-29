@@ -35,6 +35,7 @@ void DropoutLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
       // NOLINT_NEXT_LINE(whitespace/operators)
       DropoutForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
           count, bottom_data, mask, uint_thres_, scale_, top_data);
+      update_masks_on_next_forward_ = false;
     } else {
       const unsigned int* mask =
           static_cast<const unsigned int*>(rand_vec_.gpu_data());
