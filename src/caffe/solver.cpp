@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include <limits>
 #include <math.h> // for isnan, log
 #include "caffe/net.hpp"
 #include "caffe/proto/caffe.pb.h"
@@ -1336,7 +1337,7 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
     //  again. terminate line search for this minibatch.
     if (have_found_better and obj > prev_obj) { break; }
   }
-
+/*
 //  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
 //    LOG(INFO) << "Iteration " << this->iter_ << \
 //        ", starting lr = " << alpha_start << \
@@ -1348,6 +1349,7 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
 
   // we don't need to keep the new, outputted alpha_grad_current because
   // we're done with this minibatch
+  */
   PrepareJumpToAlpha(best_alpha, alpha_param_current, alpha_grad_current);
   net->Update();  // execute the jump
 }
