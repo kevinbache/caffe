@@ -1,0 +1,25 @@
+net: "examples/mnist/mnist_500-300_sigmoid_softmax.prototxt"
+
+test_state: { stage: 'test-on-train' }
+test_iter: 600
+test_state: { stage: 'test-on-test' }
+test_iter: 100
+
+test_interval: 600
+test_compute_loss: true
+
+base_lr: 0.01
+lr_policy: "fixed"
+momentum: 0.9
+#gamma: 0.1
+#stepsize: 10000
+
+display: 100
+max_iter: 50000
+snapshot: 600
+snapshot_prefix: "examples/mnist/mnist_500-300_sigmoid_softmax_sgd_train"
+# solver mode: CPU or GPU
+solver_mode: GPU
+solver_type: SGD
+
+random_seed: 1

@@ -1,0 +1,161 @@
+name: "MNIST_500-300_sigmoid_softmax"
+layer {
+  name: "data"
+  type: "Data"
+  top: "data"
+  top: "label"
+  include {
+    phase: TRAIN
+  }
+  transform_param {
+    scale: 0.0039215684
+  }
+  data_param {
+    source: "examples/mnist/mnist_train_lmdb"
+    batch_size: 100
+    backend: LMDB
+  }
+}
+layer {
+  name: "data"
+  type: "Data"
+  top: "data"
+  top: "label"
+  include {
+    phase: TEST
+    stage: "test-on-train"
+  }
+  transform_param {
+    scale: 0.0039215684
+  }
+  data_param {
+    source: "examples/mnist/mnist_train_lmdb"
+    batch_size: 100
+    backend: LMDB
+  }
+}
+layer {
+  name: "data"
+  type: "Data"
+  top: "data"
+  top: "label"
+  include {
+    phase: TEST
+    stage: "test-on-test"
+  }
+  transform_param {
+    scale: 0.0039215684
+  }
+  data_param {
+    source: "examples/mnist/mnist_test_lmdb"
+    batch_size: 100
+    backend: LMDB
+  }
+}
+layer {
+  name: "h0_ip"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "h0_ip"
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 500
+    weight_filler {
+      type: "gaussian"
+      std: .01
+      sparse: 50
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "h0"
+  type: "Sigmoid"
+  bottom: "h0_ip"
+  top: "h0"
+}
+layer {
+  name: "h1_ip"
+  type: "InnerProduct"
+  bottom: "h0"
+  top: "h1_ip"
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 300
+    weight_filler {
+      type: "gaussian"
+      std: .01
+      sparse: 30
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "h1"
+  type: "Sigmoid"
+  bottom: "h1_ip"
+  top: "h1"
+}
+layer {
+  name: "y_ip"
+  type: "InnerProduct"
+  bottom: "h1"
+  top: "y_ip"
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 10
+    weight_filler {
+      type: "gaussian"
+      std: .01
+      sparse: 0
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "accuracy"
+  type: "Accuracy"
+  bottom: "y_ip"
+  bottom: "label"
+  top: "accuracy"
+  include {
+    phase: TEST
+  }
+}
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "y_ip"
+  bottom: "label"
+  top: "loss"
+}

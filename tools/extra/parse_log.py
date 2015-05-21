@@ -50,7 +50,8 @@ def parse_log(path_to_log):
     avg_grad_norm = float('NaN')
     train_dict_list = []
     test_dict_list = []
-    train_dict_names = ('NumIters', 'Seconds', 'TrainingLoss', 'LearningRate', 'AvgGradientNorm')
+    train_dict_names = ('NumIters', 'Seconds', 'TrainingLoss',
+                        'LearningRate', 'AvgGradientNorm')
     test_dict_names = ('NumIters', 'Seconds', 'TestAccuracy', 'TestLoss')
 
     logfile_year = extract_seconds.get_log_created_year(path_to_log)

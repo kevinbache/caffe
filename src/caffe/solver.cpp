@@ -209,20 +209,19 @@ void Solver<Dtype>::Step(int iters) {
 
     // DropoutLayers will persist their masks until told to update them.
     // Tell the DropoutLayers to update their masks.
-    Dtype obj = this->net()->ForwardFrom(1);
-    Dtype obj1 = this->net()->ForwardFrom(1);
-    assert(obj == obj1);
+//    Dtype obj = this->net()->ForwardFrom(1);
+//    Dtype obj1 = this->net()->ForwardFrom(1);
+//    assert(obj == obj1);
     net_->FlagDropoutLayersForUpdate();
-    Dtype obj2 = this->net()->ForwardFrom(1);
-
-    assert(obj != obj2);
-    Dtype obj3 = this->net()->ForwardFrom(1);
-
-    assert(obj2 != obj3);
-    assert(obj2 == obj3);
-
-    LOG(INFO) << "SOLVER::SOLVE() objectives before: " << obj  << "\t" << obj1 << "\n";
-    LOG(INFO) << "SOLVER::SOLVE() objectives after:  " << obj2 << "\t" << obj3 << "\n\n";
+//    Dtype obj2 = this->net()->ForwardFrom(1);
+//
+//    assert(obj != obj2);
+//    Dtype obj3 = this->net()->ForwardFrom(1);
+//
+//    assert(obj2 != obj3);
+//
+//    LOG(INFO) << "SOLVER::SOLVE() objectives before: " << obj  << "\t" << obj1 << "\n";
+//    LOG(INFO) << "SOLVER::SOLVE() objectives after:  " << obj2 << "\t" << obj3 << "\n\n";
 
     ComputeUpdateValue();
     net_->Update();
