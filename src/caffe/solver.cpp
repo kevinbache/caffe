@@ -1297,7 +1297,6 @@ void LineSearchSolver<Dtype>::ComputeUpdateValue() {
   Dtype alpha_start = alphas_.at(start_ind);
 
   this->TrackAvgGradNorm();
-  this->DisplayIterInfo(alpha_start);
 
   // perform L1 or L2 regularization
   RegularizeGradient();
@@ -1353,6 +1352,8 @@ void LineSearchSolver<Dtype>::ComputeUpdateValue() {
   }
 
   this->prev_alpha_index = best_alpha_ind;
+
+  this->DisplayIterInfo(best_alpha);
 
   // we don't need to keep the new, outputted alpha_grad_current because
   // we're done with this minibatch
