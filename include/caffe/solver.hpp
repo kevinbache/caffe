@@ -166,22 +166,24 @@ class AdaDeltaSolver : public SGDSolver<Dtype> {
 };
 
 template <typename Dtype>
-class DucbSolver : public SGDSolver<Dtype> {
+class LineSearchSolver : public SGDSolver<Dtype> {
  public:
-  explicit DucbSolver(const SolverParameter& param)
+  explicit LineSearchSolver(const SolverParameter& param)
       : SGDSolver<Dtype>(param) { PreSolve(); constructor_sanity_check(); }
-  explicit DucbSolver(const string& param_file)
+  explicit LineSearchSolver(const string& param_file)
       : SGDSolver<Dtype>(param_file) { PreSolve(); constructor_sanity_check(); }
 
  protected:
   virtual void PreSolve();
   virtual void ComputeUpdateValue();
+
   virtual void SnapshotSolverState(SolverState* state);
   virtual void RestoreSolverState(const SolverState& state);
-  void RegularizeGradient();
 
-  void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
-  int GetStartingLrIndex();
+  virtual void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
+  virtual int GetStartingLrIndex();
+
+  void RegularizeGradient();
 
   // back up net_params.data and net_params.diff to temp_.data and temp_.diff
   // for easy restoration in case the main copy fills with NaNs
@@ -203,6 +205,7 @@ class DucbSolver : public SGDSolver<Dtype> {
       Dtype log_low_alpha = -6, int n_alphas = 33, Dtype base = 10);
 
   // convenience methods for converting between vectors and 1-dimensional blobs
+  // used for snapshot and restore
   static shared_ptr<Blob<Dtype> > Vect2Blob(const vector<Dtype> & vect);
   static vector<Dtype> * Blob2Vect(shared_ptr<Blob<Dtype> > & blob);
   static void SetInOneDimBlob(shared_ptr<Blob<Dtype> >& blob,
@@ -218,10 +221,7 @@ class DucbSolver : public SGDSolver<Dtype> {
   }
 
   // alphas_ is the set of all the learning rates we will consider
-  // rewards_ tracks the reward values for each alpha
-  // numbers_ tracks the number of times each alpha has been played
-  // all three are needed in the snapshot
-  vector<Dtype> alphas_, rewards_, numbers_, mus_, cs_, js_;
+  vector<Dtype> alphas_;
 
 //  // used for storing temporary update values.  not needed in snapshot
 //  vector<shared_ptr<Blob<Dtype> > > temp_;
@@ -231,6 +231,9 @@ class DucbSolver : public SGDSolver<Dtype> {
   // next alpha to try
   int init_sweep_ind;
 
+  // the index of the alpha value which was used in the previous iteration
+  int prev_alpha_index;
+
   // base-10 log of the smallest learning rate value to be considered
   // default: -6
   Dtype log_low_alpha;
@@ -239,7 +242,78 @@ class DucbSolver : public SGDSolver<Dtype> {
   Dtype log_high_alpha;
   // number of learning rates to be log-interpolated between log_low_alpha and log_high_alpha.
   // default: 33
-  Dtype n_alphas;
+  int n_alphas;
+
+  DISABLE_COPY_AND_ASSIGN(LineSearchSolver);
+};
+
+
+template <typename Dtype>
+class LineSearchCurrentSolver : public LineSearchSolver<Dtype> {
+ public:
+  explicit LineSearchCurrentSolver(const SolverParameter& param)
+      : LineSearchSolver<Dtype>(param) { PreSolve(); constructor_sanity_check(); }
+  explicit LineSearchCurrentSolver(const string& param_file)
+      : LineSearchSolver<Dtype>(param_file) { PreSolve(); constructor_sanity_check(); }
+
+ protected:
+  virtual void PreSolve();
+
+  virtual void SnapshotSolverState(SolverState* state);
+  virtual void RestoreSolverState(const SolverState& state);
+
+  virtual int GetStartingLrIndex();
+
+  void constructor_sanity_check() {
+    // TODO: fill in
+    CHECK_EQ(0, this->param_.base_lr())
+        << "Learning rate cannot be used with LineSearchCurrentSolver.";
+    CHECK_EQ("", this->param_.lr_policy())
+        << "Learning rate policy cannot be applied to LineSearchCurrentSolver.";
+  }
+
+  // at iteration t+1, we will start the line search at
+  // alphas_[prev_alpha_index + ALPHA_GROW_RATE].  Setting to 1.
+  int ALPHA_GROW_RATE;
+
+  DISABLE_COPY_AND_ASSIGN(LineSearchCurrentSolver);
+};
+
+
+template <typename Dtype>
+class DucbSolver : public LineSearchSolver<Dtype> {
+ public:
+  explicit DucbSolver(const SolverParameter& param)
+      : LineSearchSolver<Dtype>(param) { PreSolve(); constructor_sanity_check(); }
+  explicit DucbSolver(const string& param_file)
+      : LineSearchSolver<Dtype>(param_file) { PreSolve(); constructor_sanity_check(); }
+
+ protected:
+  virtual void PreSolve();
+
+  virtual void SnapshotSolverState(SolverState* state);
+  virtual void RestoreSolverState(const SolverState& state);
+
+  virtual void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
+  virtual int GetStartingLrIndex();
+
+  void constructor_sanity_check() {
+    // TODO: fill in
+    CHECK_EQ(0, this->param_.base_lr())
+        << "Learning rate cannot be used with DucbSolver.";
+    CHECK_EQ("", this->param_.lr_policy())
+        << "Learning rate policy cannot be applied to DucbSolver.";
+  }
+
+  // rewards_ tracks the reward values for each alpha
+  // numbers_ tracks the number of times each alpha has been played
+  // all three are needed in the snapshot
+  vector<Dtype> rewards_, numbers_, mus_, cs_, js_;
+
+  // the DUCB algorithm performs an initial sweep of all possible alpha values
+  // at the start of each training run.  init_sweep_ind tracks the index of the
+  // next alpha to try
+  int init_sweep_ind;
 
   // DUCB hyperparameters
   // forgetting factor, \in [0, 1].
@@ -255,6 +329,7 @@ class DucbSolver : public SGDSolver<Dtype> {
 };
 
 
+
 template <typename Dtype>
 Solver<Dtype>* GetSolver(const SolverParameter& param) {
   SolverParameter_SolverType type = param.solver_type();
@@ -268,6 +343,10 @@ Solver<Dtype>* GetSolver(const SolverParameter& param) {
       return new AdaGradSolver<Dtype>(param);
   case SolverParameter_SolverType_ADADELTA:
       return new AdaDeltaSolver<Dtype>(param);
+  case SolverParameter_SolverType_LINE:
+      return new LineSearchSolver<Dtype>(param);
+  case SolverParameter_SolverType_LINECURRENT:
+      return new LineSearchCurrentSolver<Dtype>(param);
   case SolverParameter_SolverType_DUCB:
       return new DucbSolver<Dtype>(param);
   default:

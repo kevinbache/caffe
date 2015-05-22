@@ -1057,7 +1057,7 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
 }
 
 template<typename Dtype>
-void DucbSolver<Dtype>::LogSpace(vector<Dtype > & vect,
+void LineSearchSolver<Dtype>::LogSpace(vector<Dtype > & vect,
     Dtype log_high_alpha, Dtype log_low_alpha, int n_alphas, Dtype base) {
   vect.clear();
   Dtype delta = (log_high_alpha - log_low_alpha) / (n_alphas - 1);
@@ -1068,7 +1068,7 @@ void DucbSolver<Dtype>::LogSpace(vector<Dtype > & vect,
 }
 
 template<typename Dtype>
-void DucbSolver<Dtype>::RegularizeGradient() {
+void LineSearchSolver<Dtype>::RegularizeGradient() {
   // perform L1 or L2 regularization
   Dtype weight_decay = this->param_.weight_decay();
   string regularization_type = this->param_.regularization_type();
@@ -1141,26 +1141,17 @@ void DucbSolver<Dtype>::RegularizeGradient() {
 
 
 template <typename Dtype>
-void DucbSolver<Dtype>::PreSolve() {
+void LineSearchSolver<Dtype>::PreSolve() {
 
-  log_high_alpha = this->param_.log_high_alpha();
-  log_low_alpha = this->param_.log_low_alpha();
-  n_alphas = this->param_.n_alphas();
+  this->log_high_alpha = this->param_.log_high_alpha();
+  this->log_low_alpha = this->param_.log_low_alpha();
+  this->n_alphas = this->param_.n_alphas();
 
-  ducb_gamma = this->param_.ducb_gamma();
-  explore_const = this->param_.explore_const();
+  LogSpace(this->alphas_,
+      this->log_high_alpha, this->log_low_alpha, this->n_alphas);
 
-  LogSpace(alphas_, log_high_alpha, log_low_alpha, n_alphas);
-
-  // sufficient statistics for the bandit model
-  rewards_.resize(n_alphas);
-  numbers_.resize(n_alphas);
-
-  mus_.resize(n_alphas);
-  cs_.resize(n_alphas);
-  js_.resize(n_alphas);
-
-  init_sweep_ind = 0;
+  this->init_sweep_ind = 0;
+  this->prev_alpha_index = -1;
 
 // really i want this to replace the presolve from sgdsolver because
 // i don't want history_, only temp_.
@@ -1176,7 +1167,7 @@ void DucbSolver<Dtype>::PreSolve() {
 }
 
 template <typename Dtype>
-void DucbSolver<Dtype>::BackupDataAndDiff() {
+void LineSearchSolver<Dtype>::BackupDataAndDiff() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   const vector<shared_ptr<Blob<Dtype> > >& temp_ = this->temp_;
 
@@ -1214,7 +1205,7 @@ void DucbSolver<Dtype>::BackupDataAndDiff() {
 }
 
 template <typename Dtype>
-Dtype DucbSolver<Dtype>::PrepareJumpFromBackup(Dtype next_alpha) {
+Dtype LineSearchSolver<Dtype>::PrepareJumpFromBackup(Dtype next_alpha) {
   // this method assumes that each net_param is undefined, that temp_.data is
   // at theta and that each temp_.diff is at grad(theta)
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
@@ -1265,7 +1256,7 @@ Dtype DucbSolver<Dtype>::PrepareJumpFromBackup(Dtype next_alpha) {
 }
 
 template <typename Dtype>
-Dtype DucbSolver<Dtype>::PrepareJumpToAlpha(Dtype param_alpha_next,
+Dtype LineSearchSolver<Dtype>::PrepareJumpToAlpha(Dtype param_alpha_next,
     Dtype param_alpha_current, Dtype grad_alpha_current) {
   // this method assumes that each net_param.data is at
   // theta - param_alpha_current * grad(theta) and that each net_param.diff is
@@ -1297,10 +1288,11 @@ Dtype DucbSolver<Dtype>::PrepareJumpToAlpha(Dtype param_alpha_next,
 
 
 template <typename Dtype>
-void DucbSolver<Dtype>::ComputeUpdateValue() {
+void LineSearchSolver<Dtype>::ComputeUpdateValue() {
 
   // get the learning rate
   int start_ind = GetStartingLrIndex();
+//  std::cout << "LineSearchSolver::ComputeUpdateValue start_ind:" << start_ind << std::endl;
   Dtype alpha_start = alphas_.at(start_ind);
 
   this->TrackAvgGradNorm();
@@ -1317,6 +1309,7 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
 
   Dtype alpha = alpha_start;
   Dtype best_alpha = Dtype(0);
+  int best_alpha_ind = 0;
 
   Dtype best_obj = starting_obj;
   Dtype obj = starting_obj;
@@ -1338,15 +1331,19 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
 
     obj = this->net()->ForwardFrom(1);
 
-    // TODO: DEAL WITH INF/NAN OBJECTIVE.  Restore from backup
+    // TODO: DEAL WITH INF/NAN OBJECTIVE.  Restore from backup because
+    // there might be inf/nan entries in the parameters
 
     GrantReward(starting_obj, obj, i);
 
     if (obj < best_obj) {
-      // this gets triggered 1) when we first drop below the starting objective
-      // function value and 2) whenever we find a new, better objective
-      // function value
-      best_obj = obj; best_alpha = alpha; have_found_better = true;
+      // this gets triggered both when 1) when we first drop below the starting
+      // objective function value and 2) whenever we find a new, better
+      // objective function value
+      best_obj = obj;
+      best_alpha = alpha;
+      best_alpha_ind = i;
+      have_found_better = true;
     }
 
     // the objective has dipped below the starting value and started to rise
@@ -1354,23 +1351,249 @@ void DucbSolver<Dtype>::ComputeUpdateValue() {
     if (have_found_better and obj > prev_obj) { break; }
   }
 
-//  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
-//    LOG(INFO) << "Iteration " << this->iter_ << \
-//        ", starting lr = " << alpha_start << \
-//        ", final lr = " << best_alpha << \
-//        ", starting obj = " << starting_obj << \
-//        ", final obj = " << best_obj << \
-//        ", grad norm = " << grad_norm;
-//  }
+  this->prev_alpha_index = best_alpha_ind;
 
   // we don't need to keep the new, outputted alpha_grad_current because
   // we're done with this minibatch
   PrepareJumpToAlpha(best_alpha, alpha_param_current, alpha_grad_current);
-  net->Update();  // execute the jump
+  // don't execute the jump with net->update() because that will be done in
+  // Solver::Step
 }
 
 template <typename Dtype>
+int LineSearchSolver<Dtype>::GetStartingLrIndex() {
+  return 0;
+}
+
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::GrantReward(Dtype old_obj,
+    Dtype new_obj, int alpha_index) {
+  return;
+}
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::SetInOneDimBlob(
+    shared_ptr<Blob<Dtype> >& blob_vect, int index, Dtype val) {
+  blob_vect->mutable_cpu_data()[blob_vect->offset(0,0,0,index)] = val;
+}
+
+//// get the value from a Blob vector which is stored at a given index
+template <typename Dtype>
+Dtype LineSearchSolver<Dtype>::GetFromOneDimBlob(
+    shared_ptr<Blob<Dtype> >& blob_vect, int index) {
+  return blob_vect->cpu_data()[blob_vect->offset(0,0,0,index)];
+}
+
+template <typename Dtype>
+shared_ptr<Blob<Dtype> > LineSearchSolver<Dtype>::Vect2Blob(const vector<Dtype> & vect) {
+  int n_elements = vect.size();
+  shared_ptr<Blob<Dtype> > blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>(1, 1, 1, n_elements));
+  for (int i = 0; i < n_elements; ++i) {
+    LineSearchSolver<Dtype>::SetInOneDimBlob(blob, i, vect.at(i));
+  }
+  return blob;
+}
+
+template <typename Dtype>
+vector<Dtype> * LineSearchSolver<Dtype>::Blob2Vect(shared_ptr<Blob<Dtype> > & blob) {
+  vector<Dtype> * vect = new vector<Dtype>();
+  assert(blob.shape(0) == 1);
+  assert(blob.shape(1) == 1);
+  assert(blob.shape(2) == 1);
+
+  int n_elements = blob->shape(3);
+  for (int i = 0; i < n_elements; ++i) {
+    vect->push_back(LineSearchSolver<Dtype>::GetFromOneDimBlob(blob, i));
+  }
+
+  return vect;
+}
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::SnapshotSolverState(SolverState* state) {
+  // convert vectors to blobs so they can be saved
+  shared_ptr<Blob<Dtype> > alphas_blob = this->Vect2Blob(alphas_);
+
+  // save blob versions of alphas
+  state->clear_history();
+
+  BlobProto* save_blob = state->add_history();
+  alphas_blob->ToProto(save_blob);
+}
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::RestoreSolverState(const SolverState& state) {
+  CHECK_EQ(state.history_size(), 1)
+      << "SolverState should have exactly 1 elements in its history:\n" \
+          "a 1-dimensional blob representing alphas.\n" \
+          "Instead found " << state.history_size() << " elements.";
+  LOG(INFO) << "LineSearchSolver: restoring history";
+
+  shared_ptr<Blob<Dtype> > alphas_blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>());
+
+  alphas_blob->FromProto(state.history(0));
+
+  int n_loaded = alphas_blob->shape(3);
+  int n_expected = alphas_.size();
+  CHECK_EQ(n_loaded, n_expected)
+    << "SolverState file with " << n_loaded << " alpha values loaded into " \
+    "LineSearchSolver which was set to have " << n_expected << "possible alphas";
+
+  alphas_ = *Blob2Vect(alphas_blob);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+template <typename Dtype>
+void LineSearchCurrentSolver<Dtype>::PreSolve() {
+
+  this->log_high_alpha = this->param_.log_high_alpha();
+  this->log_low_alpha = this->param_.log_low_alpha();
+  this->n_alphas = this->param_.n_alphas();
+
+  this->LogSpace(this->alphas_,
+      this->log_high_alpha, this->log_low_alpha, this->n_alphas);
+
+  this->ALPHA_GROW_RATE = 1;
+  this->prev_alpha_index = 0;
+
+// really i want this to replace the presolve from sgdsolver because
+// i don't want history_, only temp_.
+//
+//  // initialize temporary update memory to same size as net parameters
+//  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+//  temp_ = this->temp_;
+//  temp_.clear();
+//  for (int i = 0; i < net_params.size(); ++i) {
+//    const vector<int>& shape = net_params[i]->shape();
+//    temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+//  }
+}
+
+template <typename Dtype>
+int LineSearchCurrentSolver<Dtype>::GetStartingLrIndex() {
+  return std::max(this->prev_alpha_index - this->ALPHA_GROW_RATE,
+      0);
+}
+
+template <typename Dtype>
+void LineSearchCurrentSolver<Dtype>::SnapshotSolverState(SolverState* state) {
+  // convert vectors to blobs so they can be saved
+  shared_ptr<Blob<Dtype> > alphas_blob = this->Vect2Blob(this->alphas_);
+
+  // save blob version of alphas_ into SolverState
+  state->clear_history();
+
+  BlobProto* save_blob = state->add_history();
+  alphas_blob->ToProto(save_blob);
+}
+
+template <typename Dtype>
+void LineSearchCurrentSolver<Dtype>::RestoreSolverState(const SolverState& state) {
+  CHECK_EQ(state.history_size(), 3)
+      << "SolverState should have exactly 3 elements in its history:\n" \
+          "1-dimensional blobs representing alphas, rewards, and numbers.\n" \
+          "Instead found: " << state.history_size() ;
+  LOG(INFO) << "LineSearchCurrentSolver: restoring history";
+
+  shared_ptr<Blob<Dtype> > alphas_blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>());
+
+  alphas_blob->FromProto(state.history(0));
+
+  int n_loaded = alphas_blob->shape(3);
+  int n_expected = this->alphas_.size();
+  CHECK_EQ(n_loaded, n_expected)
+    << "SolverState file with " << n_loaded << " alpha values loaded into " \
+    "LineSearchCurrentSolver which was set to have " << n_expected << "possible alphas";
+
+  this->alphas_ = *this->Blob2Vect(alphas_blob);
+
+  // setting prev_alpha_index to 0 means that the LineSearchCurrentSolver won't
+  // remember where it was when the snapshot was taken.  that's probably ok
+  // in practice because it will just backtrack down to where it needs to be
+  // during the first iteration anyway.
+  this->ALPHA_GROW_RATE = 1;
+  this->prev_alpha_index = 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+template <typename Dtype>
+void DucbSolver<Dtype>::PreSolve() {
+
+  this->log_high_alpha = this->param_.log_high_alpha();
+  this->log_low_alpha = this->param_.log_low_alpha();
+  this->n_alphas = this->param_.n_alphas();
+
+  ducb_gamma = this->param_.ducb_gamma();
+  explore_const = this->param_.explore_const();
+
+  this->LogSpace(this->alphas_,
+      this->log_high_alpha, this->log_low_alpha, this->n_alphas);
+
+  // sufficient statistics for the bandit model
+  this->rewards_.resize(this->n_alphas);
+  this->numbers_.resize(this->n_alphas);
+
+  this->mus_.resize(this->n_alphas);
+  this->cs_.resize(this->n_alphas);
+  this->js_.resize(this->n_alphas);
+
+  this->init_sweep_ind = 0;
+
+// really i want this to replace the presolve from sgdsolver because
+// i don't want history_, only temp_.
+//
+//  // initialize temporary update memory to same size as net parameters
+//  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+//  temp_ = this->temp_;
+//  temp_.clear();
+//  for (int i = 0; i < net_params.size(); ++i) {
+//    const vector<int>& shape = net_params[i]->shape();
+//    temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+//  }
+}
+
+
+template <typename Dtype>
 int DucbSolver<Dtype>::GetStartingLrIndex() {
+  int n_alphas = this->n_alphas;
   if (init_sweep_ind < n_alphas)
     return init_sweep_ind++;
 
@@ -1414,48 +1637,9 @@ void DucbSolver<Dtype>::GrantReward(Dtype old_obj,
 }
 
 template <typename Dtype>
-void DucbSolver<Dtype>::SetInOneDimBlob(
-    shared_ptr<Blob<Dtype> >& blob_vect, int index, Dtype val) {
-  blob_vect->mutable_cpu_data()[blob_vect->offset(0,0,0,index)] = val;
-}
-
-//// get the value from a Blob vector which is stored at a given index
-template <typename Dtype>
-Dtype DucbSolver<Dtype>::GetFromOneDimBlob(
-    shared_ptr<Blob<Dtype> >& blob_vect, int index) {
-  return blob_vect->cpu_data()[blob_vect->offset(0,0,0,index)];
-}
-
-template <typename Dtype>
-shared_ptr<Blob<Dtype> > DucbSolver<Dtype>::Vect2Blob(const vector<Dtype> & vect) {
-  int n_elements = vect.size();
-  shared_ptr<Blob<Dtype> > blob =
-      shared_ptr<Blob<Dtype> >(new Blob<Dtype>(1, 1, 1, n_elements));
-  for (int i = 0; i < n_elements; ++i) {
-    DucbSolver<Dtype>::SetInOneDimBlob(blob, i, vect.at(i));
-  }
-  return blob;
-}
-
-template <typename Dtype>
-vector<Dtype> * DucbSolver<Dtype>::Blob2Vect(shared_ptr<Blob<Dtype> > & blob) {
-  vector<Dtype> * vect = new vector<Dtype>();
-  assert(blob.shape(0) == 1);
-  assert(blob.shape(1) == 1);
-  assert(blob.shape(2) == 1);
-
-  int n_elements = blob->shape(3);
-  for (int i = 0; i < n_elements; ++i) {
-    vect->push_back(DucbSolver<Dtype>::GetFromOneDimBlob(blob, i));
-  }
-
-  return vect;
-}
-
-template <typename Dtype>
 void DucbSolver<Dtype>::SnapshotSolverState(SolverState* state) {
   // convert vectors to blobs so they can be saved
-  shared_ptr<Blob<Dtype> > alphas_blob = this->Vect2Blob(alphas_);
+  shared_ptr<Blob<Dtype> > alphas_blob = this->Vect2Blob(this->alphas_);
   shared_ptr<Blob<Dtype> > rewards_blob = this->Vect2Blob(rewards_);
   shared_ptr<Blob<Dtype> > numbers_blob = this->Vect2Blob(numbers_);
 
@@ -1492,14 +1676,14 @@ void DucbSolver<Dtype>::RestoreSolverState(const SolverState& state) {
   numbers_blob->FromProto(state.history(2));
 
   int n_loaded = alphas_blob->shape(3);
-  int n_expected = alphas_.size();
+  int n_expected = this->alphas_.size();
   CHECK_EQ(n_loaded, n_expected)
     << "SolverState file with " << n_loaded << " alpha values loaded into " \
     "DucbSolver which was set to have " << n_expected << "possible alphas";
 
-  alphas_ = *Blob2Vect(alphas_blob);
-  rewards_ = *Blob2Vect(rewards_blob);
-  numbers_ = *Blob2Vect(numbers_blob);
+  this->alphas_ = *this->Blob2Vect(alphas_blob);
+  rewards_ = *this->Blob2Vect(rewards_blob);
+  numbers_ = *this->Blob2Vect(numbers_blob);
 
   // setting init_sweep_ind to n_expected means that we are assuming that the
   // DucbSolver was run for at least n_expected iterations before the snapshot
@@ -1513,6 +1697,8 @@ INSTANTIATE_CLASS(SGDSolver);
 INSTANTIATE_CLASS(NesterovSolver);
 INSTANTIATE_CLASS(AdaGradSolver);
 INSTANTIATE_CLASS(AdaDeltaSolver);
+INSTANTIATE_CLASS(LineSearchSolver);
+INSTANTIATE_CLASS(LineSearchCurrentSolver);
 INSTANTIATE_CLASS(DucbSolver);
 
 }  // namespace caffe

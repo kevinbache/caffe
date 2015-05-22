@@ -11,15 +11,12 @@ test_compute_loss: true
 log_high_alpha: 6
 log_low_alpha: -6
 n_alphas: 80
-explore_const: 1e-8
-ducb_gamma: .99
 
 display: 100
 max_iter: 60000
 snapshot: 600
 snapshot_prefix: "examples/mnist/mnist_500-300_sigmoid_softmax_ducb_train"
-# solver mode: CPU or GPU
 solver_mode: GPU
-solver_type: DUCB
+solver_type: LINECURRENT
 
 random_seed: 1
