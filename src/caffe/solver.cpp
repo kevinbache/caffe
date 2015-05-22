@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <vector>
 #include <math.h> // for isnan, log
