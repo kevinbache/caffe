@@ -6,18 +6,6 @@
 
 #include "caffe/net.hpp"
 
-// print the contents of a unidimensional blob.  used for debugging.
-#define PRINT_VECTOR_BLOB(v) \
-  for (int i = 0; i < v->shape(3); i++) { \
-    std::cout << v->data_at(0,0,0,i) << ' '; \
-  } \
-  std::cout << "\n";
-
-// print the contents of a vector
-#define PRINT_VECTOR(v, Dtype) \
-  std::copy(v.begin(), v.end(), std::ostream_iterator<Dtype>(std::cout, " ")); \
-  std::cout << "\n";
-
 namespace caffe {
 
 /**
@@ -90,19 +78,12 @@ class SGDSolver : public Solver<Dtype> {
   const vector<shared_ptr<Blob<Dtype> > >& history() { return history_; }
 
  protected:
-  Dtype GetLearningRate();
   virtual void PreSolve();
-  void DisplayIterInfo(Dtype rate);
-  Dtype GetGradNorm();
-  void TrackAvgGradNorm();
-  Dtype ResetAvgGradNorm();
-  Dtype grad_norm;
-  int n_grad_norm_iters;
+  Dtype GetLearningRate();
   virtual void ComputeUpdateValue();
   virtual void ClipGradients();
-  virtual void SnapshotSolverState(SolverState* state);
+  virtual void SnapshotSolverState(SolverState * state);
   virtual void RestoreSolverState(const SolverState& state);
-
   // history maintains the historical momentum data.
   // update maintains update related data and is not needed in snapshots.
   // temp maintains other information that might be needed in computation
@@ -145,191 +126,22 @@ class AdaGradSolver : public SGDSolver<Dtype> {
 };
 
 template <typename Dtype>
-class AdaDeltaSolver : public SGDSolver<Dtype> {
+class PolyakAveragingSolver : public SGDSolver<Dtype> {
  public:
-  explicit AdaDeltaSolver(const SolverParameter& param)
-      : SGDSolver<Dtype>(param) { PreSolve(); constructor_sanity_check(); }
-  explicit AdaDeltaSolver(const string& param_file)
-      : SGDSolver<Dtype>(param_file) { PreSolve(); constructor_sanity_check(); }
+  explicit PolyakAveragingSolver(const SolverParameter& param)
+      : SGDSolver<Dtype>(param) {}
+  explicit PolyakAveragingSolver(const string& param_file)
+      : SGDSolver<Dtype>(param_file) {}
 
  protected:
   virtual void PreSolve();
   virtual void ComputeUpdateValue();
-  void constructor_sanity_check() {
-    CHECK_EQ(0, this->param_.base_lr())
-        << "Learning rate cannot be used with AdaDelta.";
-    CHECK_EQ("", this->param_.lr_policy())
-        << "Learning rate policy cannot be applied to AdaDelta.";
-  }
-
-  DISABLE_COPY_AND_ASSIGN(AdaDeltaSolver);
-};
-
-template <typename Dtype>
-class LineSearchSolver : public SGDSolver<Dtype> {
- public:
-  explicit LineSearchSolver(const SolverParameter& param)
-      : SGDSolver<Dtype>(param) { PreSolve(); constructor_sanity_check(); }
-  explicit LineSearchSolver(const string& param_file)
-      : SGDSolver<Dtype>(param_file) { PreSolve(); constructor_sanity_check(); }
-
- protected:
-  virtual void PreSolve();
-  virtual void ComputeUpdateValue();
-
   virtual void SnapshotSolverState(SolverState* state);
   virtual void RestoreSolverState(const SolverState& state);
 
-  virtual void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
-  virtual int GetStartingLrIndex();
-
-  void RegularizeGradient();
-
-  // back up net_params.data and net_params.diff to temp_.data and temp_.diff
-  // for easy restoration in case the main copy fills with NaNs
-  void BackupDataAndDiff();
-
-  Dtype PrepareJumpFromBackup(Dtype next_alpha);
-
-  //  takes param.diff from grad_alpha_current to
-  // (param_alpha_next - param_alpha_current) * grad(theta) so that a
-  // subsequent call to net.update() will move
-  // param.data from theta - param_alpha_current * grad(theta) to
-  // theta - param_alpha_next * grad(theta).  returns the new gradient
-  // multiplier
-  Dtype PrepareJumpToAlpha(Dtype param_alpha_next,
-      Dtype param_alpha_current, Dtype grad_alpha_current);
-
-  // make a vector of logarithmically spaced values
-  void LogSpace(vector<Dtype>& vect, Dtype log_high_alpha = 2,
-      Dtype log_low_alpha = -6, int n_alphas = 33, Dtype base = 10);
-
-  // convenience methods for converting between vectors and 1-dimensional blobs
-  // used for snapshot and restore
-  static shared_ptr<Blob<Dtype> > Vect2Blob(const vector<Dtype> & vect);
-  static vector<Dtype> * Blob2Vect(shared_ptr<Blob<Dtype> > & blob);
-  static void SetInOneDimBlob(shared_ptr<Blob<Dtype> >& blob,
-      int index, Dtype val);
-  static Dtype GetFromOneDimBlob(shared_ptr<Blob<Dtype> >& blob, int index);
-
-  void constructor_sanity_check() {
- 	  // TODO: fill in
-    CHECK_EQ(0, this->param_.base_lr())
-        << "Learning rate cannot be used with DucbSolver.";
-    CHECK_EQ("", this->param_.lr_policy())
-        << "Learning rate policy cannot be applied to DucbSolver.";
-  }
-
-  // alphas_ is the set of all the learning rates we will consider
-  vector<Dtype> alphas_;
-
-//  // used for storing temporary update values.  not needed in snapshot
-//  vector<shared_ptr<Blob<Dtype> > > temp_;
-
-  // the DUCB algorithm performs an initial sweep of all possible alpha values
-  // at the start of each training run.  init_sweep_ind tracks the index of the
-  // next alpha to try
-  int init_sweep_ind;
-
-  // the index of the alpha value which was used in the previous iteration
-  int prev_alpha_index;
-
-  // base-10 log of the smallest learning rate value to be considered
-  // default: -6
-  Dtype log_low_alpha;
-  // base-10 log of the largest learning rate value to be considered
-  // default: 2
-  Dtype log_high_alpha;
-  // number of learning rates to be log-interpolated between log_low_alpha and log_high_alpha.
-  // default: 33
-  int n_alphas;
-
-  DISABLE_COPY_AND_ASSIGN(LineSearchSolver);
+  vector<shared_ptr<Blob<Dtype> > > thetatilde_;
+  DISABLE_COPY_AND_ASSIGN(PolyakAveragingSolver);
 };
-
-
-template <typename Dtype>
-class LineSearchCurrentSolver : public LineSearchSolver<Dtype> {
- public:
-  explicit LineSearchCurrentSolver(const SolverParameter& param)
-      : LineSearchSolver<Dtype>(param) { PreSolve(); constructor_sanity_check(); }
-  explicit LineSearchCurrentSolver(const string& param_file)
-      : LineSearchSolver<Dtype>(param_file) { PreSolve(); constructor_sanity_check(); }
-
- protected:
-  virtual void PreSolve();
-
-  virtual void SnapshotSolverState(SolverState* state);
-  virtual void RestoreSolverState(const SolverState& state);
-
-  virtual int GetStartingLrIndex();
-
-  void constructor_sanity_check() {
-    // TODO: fill in
-    CHECK_EQ(0, this->param_.base_lr())
-        << "Learning rate cannot be used with LineSearchCurrentSolver.";
-    CHECK_EQ("", this->param_.lr_policy())
-        << "Learning rate policy cannot be applied to LineSearchCurrentSolver.";
-  }
-
-  // at iteration t+1, we will start the line search at
-  // alphas_[prev_alpha_index + ALPHA_GROW_RATE].  Setting to 1.
-  int ALPHA_GROW_RATE;
-
-  DISABLE_COPY_AND_ASSIGN(LineSearchCurrentSolver);
-};
-
-
-template <typename Dtype>
-class DucbSolver : public LineSearchSolver<Dtype> {
- public:
-  explicit DucbSolver(const SolverParameter& param)
-      : LineSearchSolver<Dtype>(param) { PreSolve(); constructor_sanity_check(); }
-  explicit DucbSolver(const string& param_file)
-      : LineSearchSolver<Dtype>(param_file) { PreSolve(); constructor_sanity_check(); }
-
- protected:
-  virtual void PreSolve();
-
-  virtual void SnapshotSolverState(SolverState* state);
-  virtual void RestoreSolverState(const SolverState& state);
-
-  virtual void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
-  virtual int GetStartingLrIndex();
-
-  void constructor_sanity_check() {
-    // TODO: fill in
-    CHECK_EQ(0, this->param_.base_lr())
-        << "Learning rate cannot be used with DucbSolver.";
-    CHECK_EQ("", this->param_.lr_policy())
-        << "Learning rate policy cannot be applied to DucbSolver.";
-  }
-
-  // rewards_ tracks the reward values for each alpha
-  // numbers_ tracks the number of times each alpha has been played
-  // all three are needed in the snapshot
-  vector<Dtype> rewards_, numbers_, mus_, cs_, js_;
-
-  // the DUCB algorithm performs an initial sweep of all possible alpha values
-  // at the start of each training run.  init_sweep_ind tracks the index of the
-  // next alpha to try
-  int init_sweep_ind;
-
-  // DUCB hyperparameters
-  // forgetting factor, \in [0, 1].
-  // 0 means the bandit model has no memory.  1 means no forgetting.
-  // default: 0.99
-  Dtype ducb_gamma;
-  // explore constant, positive float.
-  // larger number means the bandit model will take more explore steps
-  // default: 1e-8
-  Dtype explore_const;
-
-  DISABLE_COPY_AND_ASSIGN(DucbSolver);
-};
-
-
-
 template <typename Dtype>
 Solver<Dtype>* GetSolver(const SolverParameter& param) {
   SolverParameter_SolverType type = param.solver_type();
@@ -341,14 +153,9 @@ Solver<Dtype>* GetSolver(const SolverParameter& param) {
       return new NesterovSolver<Dtype>(param);
   case SolverParameter_SolverType_ADAGRAD:
       return new AdaGradSolver<Dtype>(param);
-  case SolverParameter_SolverType_ADADELTA:
-      return new AdaDeltaSolver<Dtype>(param);
-  case SolverParameter_SolverType_LINE:
-      return new LineSearchSolver<Dtype>(param);
-  case SolverParameter_SolverType_LINECURRENT:
-      return new LineSearchCurrentSolver<Dtype>(param);
-  case SolverParameter_SolverType_DUCB:
-      return new DucbSolver<Dtype>(param);
+  case SolverParameter_SolverType_POLYAKAVERAGING:
+        return new PolyakAveragingSolver<Dtype>(param);
+
   default:
       LOG(FATAL) << "Unknown SolverType: " << type;
   }

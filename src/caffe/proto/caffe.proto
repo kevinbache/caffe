@@ -188,6 +188,7 @@ message SolverParameter {
     LINE = 4;
     LINECURRENT = 5;
     DUCB = 6;
+    POLYAKAVERAGING=7;
   }
   optional SolverType solver_type = 30 [default = SGD];
   // numerical stability for AdaGrad
@@ -217,7 +218,11 @@ message SolverParameter {
   // DUCB forgetting constant.  higher value means less forgetting.
   optional float ducb_gamma = 40 [default = 0.99];       
   // DUCB explore constant.  higher value means more exploration
-  optional float explore_const = 41 [default = 1e-8];  
+  optional float explore_const = 41 [default = 1e-8];
+  ///////////////////////////  
+  // PolyakAveraging parameters //
+  ///////////////////////////  
+  optional float polyak_coefficient = 42 [default = 0.999];  
 }
 
 // A message that stores the solver snapshots
