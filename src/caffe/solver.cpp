@@ -1,9 +1,9 @@
 #include <cstdio>
-
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <vector>
-
+#include <math.h> // for isnan, log
 #include "caffe/net.hpp"
 #include "caffe/proto/caffe.pb.h"
 #include "caffe/solver.hpp"
@@ -207,6 +207,23 @@ void Solver<Dtype>::Step(int iters) {
         }
       }
     }
+
+    // DropoutLayers will persist their masks until told to update them.
+    // Tell the DropoutLayers to update their masks.
+//    Dtype obj = this->net()->ForwardFrom(1);
+//    Dtype obj1 = this->net()->ForwardFrom(1);
+//    assert(obj == obj1);
+    net_->FlagDropoutLayersForUpdate();
+//    Dtype obj2 = this->net()->ForwardFrom(1);
+//
+//    assert(obj != obj2);
+//    Dtype obj3 = this->net()->ForwardFrom(1);
+//
+//    assert(obj2 != obj3);
+//
+//    LOG(INFO) << "SOLVER::SOLVE() objectives before: " << obj  << "\t" << obj1 << "\n";
+//    LOG(INFO) << "SOLVER::SOLVE() objectives after:  " << obj2 << "\t" << obj3 << "\n\n";
+
     ComputeUpdateValue();
     net_->Update();
 
@@ -256,10 +273,14 @@ void Solver<Dtype>::Solve(const char* resume_file) {
 
 template <typename Dtype>
 void Solver<Dtype>::TestAll() {
+	//PreTest();
   for (int test_net_id = 0; test_net_id < test_nets_.size(); ++test_net_id) {
     Test(test_net_id);
   }
+    //PostTest();
 }
+
+
 
 template <typename Dtype>
 void Solver<Dtype>::Test(const int test_net_id) {
@@ -425,12 +446,11 @@ void SGDSolver<Dtype>::PreSolve() {
     update_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
     temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
   }
+  ResetAvgGradNorm();
 }
 
-template <typename Dtype>
-void SGDSolver<Dtype>::ClipGradients() {
-  const Dtype clip_gradients = this->param_.clip_gradients();
-  if (clip_gradients < 0) { return; }
+template<typename Dtype>
+Dtype SGDSolver<Dtype>::GetGradNorm() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   Dtype sumsq_diff = 0;
   for (int i = 0; i < net_params.size(); ++i) {
@@ -439,6 +459,15 @@ void SGDSolver<Dtype>::ClipGradients() {
     }
   }
   const Dtype l2norm_diff = std::sqrt(sumsq_diff);
+  return l2norm_diff;
+}
+
+template <typename Dtype>
+void SGDSolver<Dtype>::ClipGradients() {
+  const Dtype clip_gradients = this->param_.clip_gradients();
+  if (clip_gradients < 0) { return; }
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  Dtype l2norm_diff = GetGradNorm();
   if (l2norm_diff > clip_gradients) {
     Dtype scale_factor = clip_gradients / l2norm_diff;
     LOG(INFO) << "Gradient clipping: scaling down gradients (L2 norm "
@@ -452,6 +481,46 @@ void SGDSolver<Dtype>::ClipGradients() {
   }
 }
 
+template<typename Dtype>
+void SGDSolver<Dtype>::TrackAvgGradNorm() {
+  if (this->param_.log_avg_gradient_norm()) {
+    // track sufficient statistics to be able to log the minibatch gradient
+    // norm averaged across minibatches
+    grad_norm += GetGradNorm();
+    n_grad_norm_iters += 1;
+  }
+}
+
+template<typename Dtype>
+Dtype SGDSolver<Dtype>::ResetAvgGradNorm() {
+  // reset sufficient statistic totals for logging average minibatch gradient
+  // norm
+  Dtype avg_grad_norm = grad_norm / n_grad_norm_iters;
+  grad_norm = Dtype(0);
+  n_grad_norm_iters = 0;
+  return avg_grad_norm;
+}
+
+template<typename Dtype>
+void SGDSolver<Dtype>::DisplayIterInfo(Dtype rate) {
+  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
+    LOG(INFO) << "Iteration " << this->iter_ << ", lr = " << rate;
+    if (this->param_.log_avg_gradient_norm()) {
+      Dtype avg_grad_norm = ResetAvgGradNorm();
+      LOG(INFO)<< "Iteration " << this->iter_ << \
+          ", avg_grad_norm = " << avg_grad_norm;
+    }
+  }
+}
+
+template <typename Dtype>
+void SGDSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void SGDSolver<Dtype>::PostTest() {
+}
+
 template <typename Dtype>
 void SGDSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
@@ -460,9 +529,8 @@ void SGDSolver<Dtype>::ComputeUpdateValue() {
       this->net_->params_weight_decay();
   // get the learning rate
   Dtype rate = GetLearningRate();
-  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
-    LOG(INFO) << "Iteration " << this->iter_ << ", lr = " << rate;
-  }
+  TrackAvgGradNorm();
+  DisplayIterInfo(rate);
   ClipGradients();
   Dtype momentum = this->param_.momentum();
   Dtype weight_decay = this->param_.weight_decay();
@@ -568,6 +636,15 @@ void SGDSolver<Dtype>::RestoreSolverState(const SolverState& state) {
 }
 
 template <typename Dtype>
+void NesterovSolver<Dtype>::PreTest() {
+
+}
+
+template <typename Dtype>
+void NesterovSolver<Dtype>::PostTest() {
+}
+
+template <typename Dtype>
 void NesterovSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   const vector<float>& net_params_lr = this->net_->params_lr();
@@ -575,9 +652,8 @@ void NesterovSolver<Dtype>::ComputeUpdateValue() {
       this->net_->params_weight_decay();
   // get the learning rate
   Dtype rate = this->GetLearningRate();
-  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
-    LOG(INFO) << "Iteration " << this->iter_ << ", lr = " << rate;
-  }
+  this->TrackAvgGradNorm();
+  this->DisplayIterInfo(rate);
   SGDSolver<Dtype>::ClipGradients();
   Dtype momentum = this->param_.momentum();
   Dtype weight_decay = this->param_.weight_decay();
@@ -685,6 +761,14 @@ void NesterovSolver<Dtype>::ComputeUpdateValue() {
 }
 
 template <typename Dtype>
+void AdaGradSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void AdaGradSolver<Dtype>::PostTest() {
+}
+
+template <typename Dtype>
 void AdaGradSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   const vector<float>& net_params_lr = this->net_->params_lr();
@@ -693,9 +777,8 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
   // get the learning rate
   Dtype rate = this->GetLearningRate();
   Dtype delta = this->param_.delta();
-  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
-    LOG(INFO) << "Iteration " << this->iter_ << ", lr = " << rate;
-  }
+  this->TrackAvgGradNorm();
+  this->DisplayIterInfo(rate);
   SGDSolver<Dtype>::ClipGradients();
   Dtype weight_decay = this->param_.weight_decay();
   string regularization_type = this->param_.regularization_type();
@@ -820,20 +903,899 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
 }
 
 template <typename Dtype>
+void AdaDeltaSolver<Dtype>::PreSolve() {
+  // Add the extra history entries for AdaDelta after those from
+  // SGDSolver::PreSolve
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  for (int i = 0; i < net_params.size(); ++i) {
+        const vector<int>& shape = net_params[i]->shape();
+        this->history_.push_back(
+                shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+  }
+}
+
+template <typename Dtype>
+void AdaDeltaSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void AdaDeltaSolver<Dtype>::PostTest() {
+}
+
+template <typename Dtype>
+void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<float>& net_params_weight_decay =
+          this->net_->params_weight_decay();
+  Dtype delta = this->param_.delta();
+  Dtype momentum = this->param_.momentum();
+  Dtype weight_decay = this->param_.weight_decay();
+  string regularization_type = this->param_.regularization_type();
+  size_t update_history_offset = net_params.size();
+  switch (Caffe::mode()) {
+  case Caffe::CPU:
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
+
+      if (local_decay) {
+        if (regularization_type == "L2") {
+          // add weight decay
+          caffe_axpy(net_params[param_id]->count(),
+              local_decay,
+              net_params[param_id]->cpu_data(),
+              net_params[param_id]->mutable_cpu_diff());
+        } else if (regularization_type == "L1") {
+          caffe_cpu_sign(net_params[param_id]->count(),
+              net_params[param_id]->cpu_data(),
+              this->temp_[param_id]->mutable_cpu_data());
+          caffe_axpy(net_params[param_id]->count(),
+              local_decay,
+              this->temp_[param_id]->cpu_data(),
+              net_params[param_id]->mutable_cpu_diff());
+        } else {
+          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
+        }
+      }
+
+      // compute square of gradient in update
+      caffe_powx(net_params[param_id]->count(),
+          net_params[param_id]->cpu_diff(), Dtype(2),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // update history of gradients
+      caffe_cpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
+          this->update_[param_id]->cpu_data(), momentum,
+          this->history_[param_id]->mutable_cpu_data());
+
+      // add delta to history to guard against dividing by zero later
+      caffe_set(net_params[param_id]->count(), delta,
+          this->temp_[param_id]->mutable_cpu_data());
+
+      caffe_add(net_params[param_id]->count(),
+          this->temp_[param_id]->cpu_data(),
+          this->history_[update_history_offset + param_id]->cpu_data(),
+          this->update_[param_id]->mutable_cpu_data());
+
+      caffe_add(net_params[param_id]->count(),
+          this->temp_[param_id]->cpu_data(),
+          this->history_[param_id]->cpu_data(),
+          this->temp_[param_id]->mutable_cpu_data());
+
+      // divide history of updates by history of gradients
+      caffe_div(net_params[param_id]->count(),
+          this->update_[param_id]->cpu_data(),
+          this->temp_[param_id]->cpu_data(),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // jointly compute the RMS of both for update and gradient history
+      caffe_powx(net_params[param_id]->count(),
+          this->update_[param_id]->cpu_data(), Dtype(0.5),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // compute the update
+      caffe_mul(net_params[param_id]->count(),
+          net_params[param_id]->cpu_diff(),
+          this->update_[param_id]->cpu_data(),
+          net_params[param_id]->mutable_cpu_diff());
+
+      // compute square of update
+      caffe_powx(net_params[param_id]->count(),
+          net_params[param_id]->cpu_diff(), Dtype(2),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // update history of updates
+      caffe_cpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
+          this->update_[param_id]->cpu_data(), momentum,
+          this->history_[update_history_offset + param_id]->mutable_cpu_data());
+    }
+    break;
+  case Caffe::GPU:
+#ifndef CPU_ONLY
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
+
+      if (local_decay) {
+        if (regularization_type == "L2") {
+          // add weight decay
+          caffe_gpu_axpy(net_params[param_id]->count(),
+              local_decay,
+              net_params[param_id]->gpu_data(),
+              net_params[param_id]->mutable_gpu_diff());
+        } else if (regularization_type == "L1") {
+          caffe_gpu_sign(net_params[param_id]->count(),
+              net_params[param_id]->gpu_data(),
+              this->temp_[param_id]->mutable_gpu_data());
+          caffe_gpu_axpy(net_params[param_id]->count(),
+              local_decay,
+              this->temp_[param_id]->gpu_data(),
+              net_params[param_id]->mutable_gpu_diff());
+        } else {
+          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
+        }
+      }
+
+      // compute square of gradient in update
+      caffe_gpu_powx(net_params[param_id]->count(),
+          net_params[param_id]->gpu_diff(), Dtype(2),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // update history of gradients
+      caffe_gpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
+          this->update_[param_id]->gpu_data(), momentum,
+          this->history_[param_id]->mutable_gpu_data());
+
+      // add delta to history to guard against dividing by zero later
+      caffe_gpu_set(net_params[param_id]->count(), delta,
+          this->temp_[param_id]->mutable_gpu_data());
+
+      caffe_gpu_add(net_params[param_id]->count(),
+          this->temp_[param_id]->gpu_data(),
+          this->history_[update_history_offset + param_id]->gpu_data(),
+          this->update_[param_id]->mutable_gpu_data());
+
+      caffe_gpu_add(net_params[param_id]->count(),
+          this->temp_[param_id]->gpu_data(),
+          this->history_[param_id]->gpu_data(),
+          this->temp_[param_id]->mutable_gpu_data());
+
+      // divide history of updates by history of gradients
+      caffe_gpu_div(net_params[param_id]->count(),
+          this->update_[param_id]->gpu_data(),
+          this->temp_[param_id]->gpu_data(),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // jointly compute the RMS of both for update and gradient history
+      caffe_gpu_powx(net_params[param_id]->count(),
+          this->update_[param_id]->gpu_data(), Dtype(0.5),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // compute the update and copy to net_diff
+      caffe_gpu_mul(net_params[param_id]->count(),
+          net_params[param_id]->gpu_diff(),
+          this->update_[param_id]->gpu_data(),
+          net_params[param_id]->mutable_gpu_diff());
+
+      // compute square of update
+      caffe_gpu_powx(net_params[param_id]->count(),
+          net_params[param_id]->gpu_diff(), Dtype(2),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // update history of updates
+      caffe_gpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
+          this->update_[param_id]->gpu_data(), momentum,
+          this->history_[update_history_offset + param_id]->mutable_gpu_data());
+    }
+#else
+    NO_GPU;
+#endif
+    break;
+  default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+}
+
+template<typename Dtype>
+void LineSearchSolver<Dtype>::LogSpace(vector<Dtype > & vect,
+    Dtype log_high_alpha, Dtype log_low_alpha, int n_alphas, Dtype base) {
+  vect.clear();
+  Dtype delta = (log_high_alpha - log_low_alpha) / (n_alphas - 1);
+  for (int i = 0; i < n_alphas; ++i) {
+    Dtype linear_val = log_high_alpha - i * delta;
+    vect.push_back(pow(base, linear_val));
+  }
+}
+
+template<typename Dtype>
+void LineSearchSolver<Dtype>::RegularizeGradient() {
+  // perform L1 or L2 regularization
+  Dtype weight_decay = this->param_.weight_decay();
+  string regularization_type = this->param_.regularization_type();
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<float>& net_params_weight_decay =
+      this->net_->params_weight_decay();
+  const vector<shared_ptr<Blob<Dtype> > >& temp_ = this->temp_;
+  switch (Caffe::mode()) {
+  case Caffe::CPU:
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      // Compute the value to history, and then copy them to the blob's diff.
+      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
+
+      if (local_decay) {
+        if (regularization_type == "L2") {
+          // add weight decay
+          caffe_axpy(net_params[param_id]->count(), local_decay,
+              net_params[param_id]->cpu_data(),
+              net_params[param_id]->mutable_cpu_diff());
+        } else if (regularization_type == "L1") {
+          caffe_cpu_sign(net_params[param_id]->count(),
+              net_params[param_id]->cpu_data(),
+              temp_[param_id]->mutable_cpu_data());
+          caffe_axpy(net_params[param_id]->count(), local_decay,
+              temp_[param_id]->cpu_data(),
+              net_params[param_id]->mutable_cpu_diff());
+        } else {
+          LOG(FATAL)<< "Unknown regularization type: " << regularization_type;
+        }
+      }
+
+    }
+
+    break;
+    case Caffe::GPU:
+#ifndef CPU_ONLY
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      // Compute the value to history, and then copy them to the blob's diff.
+      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
+
+      if (local_decay) {
+        if (regularization_type == "L2") {
+          // add weight decay
+          caffe_gpu_axpy(net_params[param_id]->count(),
+              local_decay,
+              net_params[param_id]->gpu_data(),
+              net_params[param_id]->mutable_gpu_diff());
+        } else if (regularization_type == "L1") {
+          caffe_gpu_sign(net_params[param_id]->count(),
+              net_params[param_id]->gpu_data(),
+              temp_[param_id]->mutable_gpu_data());
+          caffe_gpu_axpy(net_params[param_id]->count(),
+              local_decay,
+              temp_[param_id]->gpu_data(),
+              net_params[param_id]->mutable_gpu_diff());
+        } else {
+          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
+        }
+      }
+    }
+
+#else
+    NO_GPU;
+#endif
+    break;
+    default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+}
+
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::PreSolve() {
+
+  this->log_high_alpha = this->param_.log_high_alpha();
+  this->log_low_alpha = this->param_.log_low_alpha();
+  this->n_alphas = this->param_.n_alphas();
+
+  LogSpace(this->alphas_,
+      this->log_high_alpha, this->log_low_alpha, this->n_alphas);
+
+  this->init_sweep_ind = 0;
+  this->prev_alpha_index = -1;
+
+// really i want this to replace the presolve from sgdsolver because
+// i don't want history_, only temp_.
+//
+//  // initialize temporary update memory to same size as net parameters
+//  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+//  temp_ = this->temp_;
+//  temp_.clear();
+//  for (int i = 0; i < net_params.size(); ++i) {
+//    const vector<int>& shape = net_params[i]->shape();
+//    temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+//  }
+}
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::BackupDataAndDiff() {
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<shared_ptr<Blob<Dtype> > >& temp_ = this->temp_;
+
+    switch (Caffe::mode()) {
+    case Caffe::CPU:
+      for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->cpu_data(),
+            temp_[param_id]->mutable_cpu_data());
+
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->cpu_diff(),
+            temp_[param_id]->mutable_cpu_diff());
+      }
+      break;
+    case Caffe::GPU:
+  #ifndef CPU_ONLY
+      for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->gpu_data(),
+            temp_[param_id]->mutable_gpu_data());
+
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->gpu_diff(),
+            temp_[param_id]->mutable_gpu_diff());
+      }
+  #else
+      NO_GPU;
+  #endif
+      break;
+    default:
+      LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+    }
+
+}
+
+template <typename Dtype>
+Dtype LineSearchSolver<Dtype>::PrepareJumpFromBackup(Dtype next_alpha) {
+  // this method assumes that each net_param is undefined, that temp_.data is
+  // at theta and that each temp_.diff is at grad(theta)
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<shared_ptr<Blob<Dtype> > >& temp_ = this->temp_;
+
+  const vector<float>& net_params_lr = this->net_->params_lr();
+
+  // copy from data/diff
+  switch (Caffe::mode()) {
+    case Caffe::CPU:
+      for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->cpu_data(),
+            temp_[param_id]->mutable_cpu_data());
+
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->cpu_diff(),
+            temp_[param_id]->mutable_cpu_diff());
+
+      }
+      break;
+    case Caffe::GPU:
+  #ifndef CPU_ONLY
+      for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->gpu_data(),
+            temp_[param_id]->mutable_gpu_data());
+
+        caffe_copy(net_params[param_id]->count(),
+            net_params[param_id]->gpu_diff(),
+            temp_[param_id]->mutable_gpu_diff());
+      }
+  #else
+      NO_GPU;
+  #endif
+      break;
+    default:
+      LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+
+  // scale diff
+  for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+    Dtype local_alpha = next_alpha * net_params_lr[param_id];
+    net_params[param_id]->scale_diff(local_alpha);
+  }
+
+  return next_alpha;
+}
+
+template <typename Dtype>
+Dtype LineSearchSolver<Dtype>::PrepareJumpToAlpha(Dtype param_alpha_next,
+    Dtype param_alpha_current, Dtype grad_alpha_current) {
+  // this method assumes that each net_param.data is at
+  // theta - param_alpha_current * grad(theta) and that each net_param.diff is
+  // at grad_alpha_current * grad(theta) where theta represents net_param.data
+  // at the beginning of this iteration.
+  //
+  // it leaves data at theta - param_alpha_next * grad(theta) and diff at
+  // (param_alpha_next - param_alpha_current) * grad(theta) so that running
+  // update on the net will leave the params at theta - param_alpha_next *
+  // grad(theta)
+  //
+  // note that this update will leave local_rate multipliers intact without
+  // having to deal with them explicitly (work out the algebra to convince
+  // yourself of this)
+  //
+  // returns (param_alpha_next - param_alpha_current), the final multiplier to
+  // grad(theta) in diff.
+
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const Dtype grad_multiplier =
+      (param_alpha_next - param_alpha_current) / grad_alpha_current;
+
+  for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+    net_params[param_id]->scale_diff(grad_multiplier);
+  }
+
+  return param_alpha_next - param_alpha_current;
+}
+template <typename Dtype>
+void LineSearchSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::PostTest() {
+}
+
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::ComputeUpdateValue() {
+
+  // get the learning rate
+  int start_ind = GetStartingLrIndex();
+//  std::cout << "LineSearchSolver::ComputeUpdateValue start_ind:" << start_ind << std::endl;
+  Dtype alpha_start = alphas_.at(start_ind);
+
+  this->TrackAvgGradNorm();
+
+  // perform L1 or L2 regularization
+  RegularizeGradient();
+
+  BackupDataAndDiff();
+
+  shared_ptr<Net<Dtype> > net = this->net();
+  // ForwardFrom(1) prevents updating the input data in the bottom layer
+  Dtype starting_obj = this->net()->ForwardFrom(1);
+
+  Dtype alpha = alpha_start;
+  Dtype best_alpha = Dtype(0);
+  int best_alpha_ind = 0;
+
+  Dtype best_obj = starting_obj;
+  Dtype obj = starting_obj;
+  Dtype prev_obj;
+
+  Dtype alpha_param_current = Dtype(0);
+  Dtype alpha_grad_current = Dtype(1);
+
+  // perform a back-tracking line search from the DUCB model's starting alpha
+  // value
+  bool have_found_better = false;
+  for (int i = start_ind; i < n_alphas; ++i) {
+    prev_obj = obj;
+    alpha = alphas_.at(i);
+    alpha_grad_current =
+        PrepareJumpToAlpha(alpha, alpha_param_current, alpha_grad_current);
+    net->Update();  // execute the jump
+    alpha_param_current = alpha;
+
+    obj = this->net()->ForwardFrom(1);
+
+    // TODO: DEAL WITH INF/NAN OBJECTIVE.  Restore from backup because
+    // there might be inf/nan entries in the parameters
+
+    GrantReward(starting_obj, obj, i);
+
+    if (obj < best_obj) {
+      // this gets triggered both when 1) when we first drop below the starting
+      // objective function value and 2) whenever we find a new, better
+      // objective function value
+      best_obj = obj;
+      best_alpha = alpha;
+      best_alpha_ind = i;
+      have_found_better = true;
+    }
+
+    // the objective has dipped below the starting value and started to rise
+    //  again. terminate line search for this minibatch.
+    if (have_found_better and obj > prev_obj) { break; }
+  }
+
+  this->prev_alpha_index = best_alpha_ind;
+
+  this->DisplayIterInfo(best_alpha);
+
+  // we don't need to keep the new, outputted alpha_grad_current because
+  // we're done with this minibatch
+  PrepareJumpToAlpha(best_alpha, alpha_param_current, alpha_grad_current);
+  // don't execute the jump with net->update() because that will be done in
+  // Solver::Step
+}
+
+template <typename Dtype>
+int LineSearchSolver<Dtype>::GetStartingLrIndex() {
+  return 0;
+}
+
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::GrantReward(Dtype old_obj,
+    Dtype new_obj, int alpha_index) {
+  return;
+}
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::SetInOneDimBlob(
+    shared_ptr<Blob<Dtype> >& blob_vect, int index, Dtype val) {
+  blob_vect->mutable_cpu_data()[blob_vect->offset(0,0,0,index)] = val;
+}
+
+//// get the value from a Blob vector which is stored at a given index
+template <typename Dtype>
+Dtype LineSearchSolver<Dtype>::GetFromOneDimBlob(
+    shared_ptr<Blob<Dtype> >& blob_vect, int index) {
+  return blob_vect->cpu_data()[blob_vect->offset(0,0,0,index)];
+}
+
+template <typename Dtype>
+shared_ptr<Blob<Dtype> > LineSearchSolver<Dtype>::Vect2Blob(const vector<Dtype> & vect) {
+  int n_elements = vect.size();
+  shared_ptr<Blob<Dtype> > blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>(1, 1, 1, n_elements));
+  for (int i = 0; i < n_elements; ++i) {
+    LineSearchSolver<Dtype>::SetInOneDimBlob(blob, i, vect.at(i));
+  }
+  return blob;
+}
+
+template <typename Dtype>
+vector<Dtype> * LineSearchSolver<Dtype>::Blob2Vect(shared_ptr<Blob<Dtype> > & blob) {
+  vector<Dtype> * vect = new vector<Dtype>();
+  assert(blob.shape(0) == 1);
+  assert(blob.shape(1) == 1);
+  assert(blob.shape(2) == 1);
+
+  int n_elements = blob->shape(3);
+  for (int i = 0; i < n_elements; ++i) {
+    vect->push_back(LineSearchSolver<Dtype>::GetFromOneDimBlob(blob, i));
+  }
+
+  return vect;
+}
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::SnapshotSolverState(SolverState* state) {
+  // convert vectors to blobs so they can be saved
+  shared_ptr<Blob<Dtype> > alphas_blob = this->Vect2Blob(alphas_);
+
+  // save blob versions of alphas
+  state->clear_history();
+
+  BlobProto* save_blob = state->add_history();
+  alphas_blob->ToProto(save_blob);
+}
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::RestoreSolverState(const SolverState& state) {
+  CHECK_EQ(state.history_size(), 1)
+      << "SolverState should have exactly 1 elements in its history:\n" \
+          "a 1-dimensional blob representing alphas.\n" \
+          "Instead found " << state.history_size() << " elements.";
+  LOG(INFO) << "LineSearchSolver: restoring history";
+
+  shared_ptr<Blob<Dtype> > alphas_blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>());
+
+  alphas_blob->FromProto(state.history(0));
+
+  int n_loaded = alphas_blob->shape(3);
+  int n_expected = alphas_.size();
+  CHECK_EQ(n_loaded, n_expected)
+    << "SolverState file with " << n_loaded << " alpha values loaded into " \
+    "LineSearchSolver which was set to have " << n_expected << "possible alphas";
+
+  alphas_ = *Blob2Vect(alphas_blob);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+template <typename Dtype>
+void LineSearchCurrentSolver<Dtype>::PreSolve() {
+
+  this->log_high_alpha = this->param_.log_high_alpha();
+  this->log_low_alpha = this->param_.log_low_alpha();
+  this->n_alphas = this->param_.n_alphas();
+
+  this->LogSpace(this->alphas_,
+      this->log_high_alpha, this->log_low_alpha, this->n_alphas);
+
+  this->ALPHA_GROW_RATE = 1;
+  this->prev_alpha_index = 0;
+
+// really i want this to replace the presolve from sgdsolver because
+// i don't want history_, only temp_.
+//
+//  // initialize temporary update memory to same size as net parameters
+//  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+//  temp_ = this->temp_;
+//  temp_.clear();
+//  for (int i = 0; i < net_params.size(); ++i) {
+//    const vector<int>& shape = net_params[i]->shape();
+//    temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+//  }
+}
+
+template <typename Dtype>
+int LineSearchCurrentSolver<Dtype>::GetStartingLrIndex() {
+  return std::max(this->prev_alpha_index - this->ALPHA_GROW_RATE,
+      0);
+}
+
+template <typename Dtype>
+void LineSearchCurrentSolver<Dtype>::SnapshotSolverState(SolverState* state) {
+  // convert vectors to blobs so they can be saved
+  shared_ptr<Blob<Dtype> > alphas_blob = this->Vect2Blob(this->alphas_);
+
+  // save blob version of alphas_ into SolverState
+  state->clear_history();
+
+  BlobProto* save_blob = state->add_history();
+  alphas_blob->ToProto(save_blob);
+}
+
+template <typename Dtype>
+void LineSearchCurrentSolver<Dtype>::RestoreSolverState(const SolverState& state) {
+  CHECK_EQ(state.history_size(), 3)
+      << "SolverState should have exactly 3 elements in its history:\n" \
+          "1-dimensional blobs representing alphas, rewards, and numbers.\n" \
+          "Instead found: " << state.history_size() ;
+  LOG(INFO) << "LineSearchCurrentSolver: restoring history";
+
+  shared_ptr<Blob<Dtype> > alphas_blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>());
+
+  alphas_blob->FromProto(state.history(0));
+
+  int n_loaded = alphas_blob->shape(3);
+  int n_expected = this->alphas_.size();
+  CHECK_EQ(n_loaded, n_expected)
+    << "SolverState file with " << n_loaded << " alpha values loaded into " \
+    "LineSearchCurrentSolver which was set to have " << n_expected << "possible alphas";
+
+  this->alphas_ = *this->Blob2Vect(alphas_blob);
+
+  // setting prev_alpha_index to 0 means that the LineSearchCurrentSolver won't
+  // remember where it was when the snapshot was taken.  that's probably ok
+  // in practice because it will just backtrack down to where it needs to be
+  // during the first iteration anyway.
+  this->ALPHA_GROW_RATE = 1;
+  this->prev_alpha_index = 0;
+}
+
+
+template <typename Dtype>
+void LineSearchCurrentSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void LineSearchCurrentSolver<Dtype>::PostTest() {
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+template <typename Dtype>
+void DucbSolver<Dtype>::PreSolve() {
+
+  this->log_high_alpha = this->param_.log_high_alpha();
+  this->log_low_alpha = this->param_.log_low_alpha();
+  this->n_alphas = this->param_.n_alphas();
+
+  ducb_gamma = this->param_.ducb_gamma();
+  explore_const = this->param_.explore_const();
+
+  this->LogSpace(this->alphas_,
+      this->log_high_alpha, this->log_low_alpha, this->n_alphas);
+
+  // sufficient statistics for the bandit model
+  this->rewards_.resize(this->n_alphas);
+  this->numbers_.resize(this->n_alphas);
+
+  this->mus_.resize(this->n_alphas);
+  this->cs_.resize(this->n_alphas);
+  this->js_.resize(this->n_alphas);
+
+  this->init_sweep_ind = 0;
+
+// really i want this to replace the presolve from sgdsolver because
+// i don't want history_, only temp_.
+//
+//  // initialize temporary update memory to same size as net parameters
+//  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+//  temp_ = this->temp_;
+//  temp_.clear();
+//  for (int i = 0; i < net_params.size(); ++i) {
+//    const vector<int>& shape = net_params[i]->shape();
+//    temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+//  }
+}
+
+
+template <typename Dtype>
+int DucbSolver<Dtype>::GetStartingLrIndex() {
+  int n_alphas = this->n_alphas;
+  if (init_sweep_ind < n_alphas)
+    return init_sweep_ind++;
+
+  Dtype n_total = 0;
+  for (int i = 0; i < n_alphas; ++i) {
+    rewards_[i] *= ducb_gamma;
+    numbers_[i] *= ducb_gamma;
+    n_total += numbers_[i];
+  }
+
+  int best_ind = 0;
+  Dtype best_j = std::numeric_limits<Dtype>::min();
+  Dtype j;
+
+  for (int i = 0; i < n_alphas; ++i) {
+    assert(numbers_[i] > 0);
+    mus_[i] = rewards_[i] / numbers_[i];
+    cs_[i] = sqrt(explore_const * log(n_total) / numbers_[i]);
+    j = mus_[i] + cs_[i];
+    js_[i] = j;
+    assert(!isnan(j));
+    if (j > best_j) { best_j = j; best_ind = i; }
+  }
+
+  return best_ind;
+}
+
+
+template <typename Dtype>
+void DucbSolver<Dtype>::GrantReward(Dtype old_obj,
+    Dtype new_obj, int alpha_index) {
+  Dtype stability_const = 1e-15;
+  Dtype reward_amount =
+      log(old_obj + stability_const) - log(new_obj + stability_const);
+
+  assert(!isnan(reward_amount));
+  assert(alpha_index < n_alphas && alpha_index >= 0);
+  numbers_[alpha_index] += 1;
+  rewards_[alpha_index] += reward_amount;
+  return;
+}
+
+template <typename Dtype>
+void DucbSolver<Dtype>::SnapshotSolverState(SolverState* state) {
+  // convert vectors to blobs so they can be saved
+  shared_ptr<Blob<Dtype> > alphas_blob = this->Vect2Blob(this->alphas_);
+  shared_ptr<Blob<Dtype> > rewards_blob = this->Vect2Blob(rewards_);
+  shared_ptr<Blob<Dtype> > numbers_blob = this->Vect2Blob(numbers_);
+
+  // save blob versions of alphas, rewards, and numbers into SolverState
+  state->clear_history();
+
+  BlobProto* save_blob = state->add_history();
+  alphas_blob->ToProto(save_blob);
+
+  save_blob = state->add_history();
+  rewards_blob->ToProto(save_blob);
+
+  save_blob = state->add_history();
+  numbers_blob->ToProto(save_blob);
+}
+
+template <typename Dtype>
+void DucbSolver<Dtype>::RestoreSolverState(const SolverState& state) {
+  CHECK_EQ(state.history_size(), 3)
+      << "SolverState should have exactly 3 elements in its history:\n" \
+          "1-dimensional blobs representing alphas, rewards, and numbers.\n" \
+          "Instead found: " << state.history_size() ;
+  LOG(INFO) << "DucbSolver: restoring history";
+
+  shared_ptr<Blob<Dtype> > alphas_blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>());
+  shared_ptr<Blob<Dtype> > rewards_blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>());
+  shared_ptr<Blob<Dtype> > numbers_blob =
+      shared_ptr<Blob<Dtype> >(new Blob<Dtype>());
+
+  alphas_blob->FromProto(state.history(0));
+  rewards_blob->FromProto(state.history(1));
+  numbers_blob->FromProto(state.history(2));
+
+  int n_loaded = alphas_blob->shape(3);
+  int n_expected = this->alphas_.size();
+  CHECK_EQ(n_loaded, n_expected)
+    << "SolverState file with " << n_loaded << " alpha values loaded into " \
+    "DucbSolver which was set to have " << n_expected << "possible alphas";
+
+  this->alphas_ = *this->Blob2Vect(alphas_blob);
+  rewards_ = *this->Blob2Vect(rewards_blob);
+  numbers_ = *this->Blob2Vect(numbers_blob);
+
+  // setting init_sweep_ind to n_expected means that we are assuming that the
+  // DucbSolver was run for at least n_expected iterations before the snapshot
+  // was taken.  this should toe a reasonable assumption in practice.
+  init_sweep_ind = n_expected;
+}
+
+
+template <typename Dtype>
+void DucbSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void DucbSolver<Dtype>::PostTest() {
+}
+
+template <typename Dtype>
 void PolyakAveragingSolver<Dtype>::PreSolve() {
 	const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
 	this->history_.clear();
 	this->update_.clear();
 	this->temp_.clear();
-	thetatilde_.clear();
+	net_params_averaged_.clear();
 	for (int i = 0; i < net_params.size(); ++i) {
 		const vector<int>& shape = net_params[i]->shape();
 		this->history_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
 		this->update_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
 		this->temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
-		thetatilde_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+		net_params_averaged_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
 	}
 }
+template <typename Dtype>
+void PolyakAveragingSolver<Dtype>::PreTest() {
+ const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+ for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+	 // store the current parameter values (net_params) in temp_
+	 caffe_copy(net_params[param_id]->count(),
+	   				 net_params[param_id]->cpu_data(),
+	   				 this->temp_[param_id]->mutable_cpu_data());
+	 // Replace the net_params with the averaged values
+	   caffe_copy(net_params[param_id]->count(),
+				 net_params_averaged_[param_id]->cpu_data(),
+				 net_params[param_id]->mutable_cpu_data());
+   }
+
+}
+
+template <typename Dtype>
+void PolyakAveragingSolver<Dtype>::PostTest() {
+	const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+	 for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+		 // Get back to the previous parameters during training
+		 caffe_copy(net_params[param_id]->count(),
+				         this->temp_[param_id]->mutable_cpu_data(),
+				         net_params[param_id]->mutable_cpu_data());
+	   }
+
+}
+
 template <typename Dtype>
 void PolyakAveragingSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
@@ -890,10 +1852,11 @@ void PolyakAveragingSolver<Dtype>::ComputeUpdateValue() {
 			  net_params[param_id]->cpu_data(),
 			  this->history_[param_id]->cpu_data(),
 	          this->temp_[param_id]->mutable_cpu_data());
-	  // theta_tilde_t+1= alpha*theta_tilde_t+(1-alpha)*theta_(t+1)
+	  // theta_tilde_t+1= polyak_coeff*theta_tilde_t
+	  //+(1-polyak_coefficient)*theta_(t+1)
 	  caffe_cpu_axpby(net_params[param_id]->count(), (1-polyak_coefficient),
 			  this->temp_[param_id]->mutable_cpu_data(), polyak_coefficient,
-	  		  thetatilde_[param_id]->mutable_cpu_data());
+	  		  net_params_averaged_[param_id]->mutable_cpu_data());
 
 	  // copy
 	  caffe_copy(net_params[param_id]->count(),
@@ -943,7 +1906,7 @@ void PolyakAveragingSolver<Dtype>::ComputeUpdateValue() {
 
 	  caffe_gpu_axpby(net_params[param_id]->count(), (1-polyak_coefficient),
 			  this->temp_[param_id]->mutable_cpu_data(), polyak_coefficient,
-	  		  thetatilde_[param_id]->mutable_cpu_data());
+	  		  net_params_averaged_[param_id]->mutable_cpu_data());
 
 
 	  // copy
@@ -969,22 +1932,22 @@ void PolyakAveragingSolver<Dtype>::SnapshotSolverState(SolverState* state) {
 	   this->history_[i]->ToProto(history_blob);
 }
 
-	for (int i = 0; i < thetatilde_.size(); ++i) {
-		   // Add thetatilde to history
+	for (int i = 0; i < net_params_averaged_.size(); ++i) {
+		   // Add net_params_averaged to history
 		   BlobProto* theta_tilde_blob = state->add_history();
-		   thetatilde_[i]->ToProto(theta_tilde_blob);
+		   net_params_averaged_[i]->ToProto(theta_tilde_blob);
 	}
 }
 template <typename Dtype>
 void PolyakAveragingSolver<Dtype>::RestoreSolverState(const SolverState& state) {
-	  CHECK_EQ(state.history_size(), this->history_.size()+thetatilde_.size())
-	      << "Incorrect length of history and thetatilde blobs.";
+	  CHECK_EQ(state.history_size(), this->history_.size()+net_params_averaged_.size())
+	      << "Incorrect length of history and net_params_averaged blobs.";
 	  LOG(INFO) << "PolyakAveragingSolver: restoring history";
 	  for (int i = 0; i < this->history_.size(); ++i) {
 		  this->history_[i]->FromProto(state.history(i));
 	  }
 	  for (int i = 0; i < this->history_.size(); ++i) {
-		thetatilde_[i]->FromProto(state.history(i+this->history_.size()));
+		net_params_averaged_[i]->FromProto(state.history(i+this->history_.size()));
 	  }
 
 }
@@ -994,5 +1957,9 @@ INSTANTIATE_CLASS(Solver);
 INSTANTIATE_CLASS(SGDSolver);
 INSTANTIATE_CLASS(NesterovSolver);
 INSTANTIATE_CLASS(AdaGradSolver);
+INSTANTIATE_CLASS(AdaDeltaSolver);
+INSTANTIATE_CLASS(LineSearchSolver);
+INSTANTIATE_CLASS(LineSearchCurrentSolver);
+INSTANTIATE_CLASS(DucbSolver);
 INSTANTIATE_CLASS(PolyakAveragingSolver);
 }  // namespace caffe
