@@ -358,7 +358,7 @@ class PolyakAveragingSolver : public SGDSolver<Dtype> {
   virtual void SnapshotSolverState(SolverState* state);
   virtual void RestoreSolverState(const SolverState& state);
 
-  vector<shared_ptr<Blob<Dtype> > > net_params_averaged_;
+  vector<shared_ptr<Blob<Dtype> > > net_params_averaged_,net_params_holder_;
   DISABLE_COPY_AND_ASSIGN(PolyakAveragingSolver);
 };
 

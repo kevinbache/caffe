@@ -1759,6 +1759,7 @@ void PolyakAveragingSolver<Dtype>::PreSolve() {
 	this->history_.clear();
 	this->update_.clear();
 	this->temp_.clear();
+	net_params_holder_.clear();
 	net_params_averaged_.clear();
 	for (int i = 0; i < net_params.size(); ++i) {
 		const vector<int>& shape = net_params[i]->shape();
@@ -1766,16 +1767,17 @@ void PolyakAveragingSolver<Dtype>::PreSolve() {
 		this->update_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
 		this->temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
 		net_params_averaged_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+		net_params_holder_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
 	}
 }
 template <typename Dtype>
 void PolyakAveragingSolver<Dtype>::PreTest() {
  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
  for (int param_id = 0; param_id < net_params.size(); ++param_id) {
-	 // store the current parameter values (net_params) in temp_
+	 // store the current parameter values (net_params) in net_params_holder_
 	 caffe_copy(net_params[param_id]->count(),
 	   				 net_params[param_id]->cpu_data(),
-	   				 this->temp_[param_id]->mutable_cpu_data());
+	   				 net_params_holder_[param_id]->mutable_cpu_data());
 	 // Replace the net_params with the averaged values
 	   caffe_copy(net_params[param_id]->count(),
 				 net_params_averaged_[param_id]->cpu_data(),
@@ -1790,7 +1792,7 @@ void PolyakAveragingSolver<Dtype>::PostTest() {
 	 for (int param_id = 0; param_id < net_params.size(); ++param_id) {
 		 // Get back to the previous parameters during training
 		 caffe_copy(net_params[param_id]->count(),
-				         this->temp_[param_id]->mutable_cpu_data(),
+				 	 	 net_params_holder_[param_id]->mutable_cpu_data(),
 				         net_params[param_id]->mutable_cpu_data());
 	   }
 
