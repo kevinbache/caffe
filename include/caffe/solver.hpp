@@ -93,13 +93,18 @@ class SGDSolver : public Solver<Dtype> {
   Dtype GetLearningRate();
   virtual void PreSolve();
   void DisplayIterInfo(Dtype rate);
+
   Dtype GetGradNorm();
   void TrackAvgGradNorm();
   Dtype ResetAvgGradNorm();
   Dtype grad_norm;
   int n_grad_norm_iters;
-  virtual void ComputeUpdateValue();
+
+  void RegularizeGradient();
   virtual void ClipGradients();
+
+  virtual void ComputeUpdateValue();
+
   virtual void SnapshotSolverState(SolverState* state);
   virtual void RestoreSolverState(const SolverState& state);
 
@@ -147,6 +152,9 @@ class AdaGradSolver : public SGDSolver<Dtype> {
 template <typename Dtype>
 class AdaDeltaSolver : public SGDSolver<Dtype> {
  public:
+  // Note: first, the SGDSolver constructor will be called and will run
+  // SGDSovler::PreSolve().  Second, the AdaDeltaSolver constructor will be
+  // called which will run AdaDeltaSolver::PreSolve().
   explicit AdaDeltaSolver(const SolverParameter& param)
       : SGDSolver<Dtype>(param) { PreSolve(); constructor_sanity_check(); }
   explicit AdaDeltaSolver(const string& param_file)
@@ -168,6 +176,9 @@ class AdaDeltaSolver : public SGDSolver<Dtype> {
 template <typename Dtype>
 class LineSearchSolver : public SGDSolver<Dtype> {
  public:
+  // Note: first, the SGDSolver constructor will be called and will run
+  // SGDSovler::PreSolve().  Second, the LineSearchSolver constructor will be
+  // called which will run LineSearchSolver::PreSolve().
   explicit LineSearchSolver(const SolverParameter& param)
       : SGDSolver<Dtype>(param) { PreSolve(); constructor_sanity_check(); }
   explicit LineSearchSolver(const string& param_file)
@@ -182,8 +193,6 @@ class LineSearchSolver : public SGDSolver<Dtype> {
 
   virtual void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
   virtual int GetStartingLrIndex();
-
-  void RegularizeGradient();
 
   // back up net_params.data and net_params.diff to temp_.data and temp_.diff
   // for easy restoration in case the main copy fills with NaNs
@@ -219,6 +228,9 @@ class LineSearchSolver : public SGDSolver<Dtype> {
     CHECK_EQ("", this->param_.lr_policy())
         << "Learning rate policy cannot be applied to DucbSolver.";
   }
+
+  void PerformLineSearch(Dtype &final_data_mult, Dtype & final_diff_mult);
+  void PerformLineSearch();
 
   // alphas_ is the set of all the learning rates we will consider
   vector<Dtype> alphas_;

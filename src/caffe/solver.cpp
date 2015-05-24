@@ -168,8 +168,8 @@ void Solver<Dtype>::Step(int iters) {
   Dtype smoothed_loss = 0;
 
   for (; iter_ < stop_iter; ++iter_) {
-    if (param_.test_interval() && iter_ % param_.test_interval() == 0
-        && (iter_ > 0 || param_.test_initialization())) {
+    if (param_.test_interval() && iter_ % param_.test_interval() == 0 \
+        && (iter_ > 0 || param_.test_initialization()) ) {
       TestAll();
     }
 
@@ -446,6 +446,18 @@ void SGDSolver<Dtype>::PreSolve() {
 }
 
 template<typename Dtype>
+void SGDSolver<Dtype>::DisplayIterInfo(Dtype rate) {
+  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
+    LOG(INFO) << "Iteration " << this->iter_ << ", lr = " << rate;
+    if (this->param_.log_avg_gradient_norm()) {
+      Dtype avg_grad_norm = ResetAvgGradNorm();
+      LOG(INFO)<< "Iteration " << this->iter_ << \
+          ", avg_grad_norm = " << avg_grad_norm;
+    }
+  }
+}
+
+template<typename Dtype>
 Dtype SGDSolver<Dtype>::GetGradNorm() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   Dtype sumsq_diff = 0;
@@ -456,25 +468,6 @@ Dtype SGDSolver<Dtype>::GetGradNorm() {
   }
   const Dtype l2norm_diff = std::sqrt(sumsq_diff);
   return l2norm_diff;
-}
-
-template <typename Dtype>
-void SGDSolver<Dtype>::ClipGradients() {
-  const Dtype clip_gradients = this->param_.clip_gradients();
-  if (clip_gradients < 0) { return; }
-  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
-  Dtype l2norm_diff = GetGradNorm();
-  if (l2norm_diff > clip_gradients) {
-    Dtype scale_factor = clip_gradients / l2norm_diff;
-    LOG(INFO) << "Gradient clipping: scaling down gradients (L2 norm "
-        << l2norm_diff << " > " << clip_gradients << ") "
-        << "by scale factor " << scale_factor;
-    for (int i = 0; i < net_params.size(); ++i) {
-      if (this->net_->param_owners()[i] < 0) {
-        net_params[i]->scale_diff(scale_factor);
-      }
-    }
-  }
 }
 
 template<typename Dtype>
@@ -498,72 +491,45 @@ Dtype SGDSolver<Dtype>::ResetAvgGradNorm() {
 }
 
 template<typename Dtype>
-void SGDSolver<Dtype>::DisplayIterInfo(Dtype rate) {
-  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
-    LOG(INFO) << "Iteration " << this->iter_ << ", lr = " << rate;
-    if (this->param_.log_avg_gradient_norm()) {
-      Dtype avg_grad_norm = ResetAvgGradNorm();
-      LOG(INFO)<< "Iteration " << this->iter_ << \
-          ", avg_grad_norm = " << avg_grad_norm;
-    }
-  }
-}
-
-template <typename Dtype>
-void SGDSolver<Dtype>::ComputeUpdateValue() {
-  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
-  const vector<float>& net_params_lr = this->net_->params_lr();
-  const vector<float>& net_params_weight_decay =
-      this->net_->params_weight_decay();
-  // get the learning rate
-  Dtype rate = GetLearningRate();
-  TrackAvgGradNorm();
-  DisplayIterInfo(rate);
-  ClipGradients();
-  Dtype momentum = this->param_.momentum();
+void SGDSolver<Dtype>::RegularizeGradient() {
+  // perform L1 or L2 regularization
   Dtype weight_decay = this->param_.weight_decay();
   string regularization_type = this->param_.regularization_type();
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<float>& net_params_weight_decay =
+      this->net_->params_weight_decay();
+  const vector<shared_ptr<Blob<Dtype> > >& temp_ = this->temp_;
+
   switch (Caffe::mode()) {
   case Caffe::CPU:
     for (int param_id = 0; param_id < net_params.size(); ++param_id) {
       // Compute the value to history, and then copy them to the blob's diff.
-      Dtype local_rate = rate * net_params_lr[param_id];
       Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
 
       if (local_decay) {
         if (regularization_type == "L2") {
           // add weight decay
-          caffe_axpy(net_params[param_id]->count(),
-              local_decay,
+          caffe_axpy(net_params[param_id]->count(), local_decay,
               net_params[param_id]->cpu_data(),
               net_params[param_id]->mutable_cpu_diff());
         } else if (regularization_type == "L1") {
           caffe_cpu_sign(net_params[param_id]->count(),
               net_params[param_id]->cpu_data(),
               temp_[param_id]->mutable_cpu_data());
-          caffe_axpy(net_params[param_id]->count(),
-              local_decay,
+          caffe_axpy(net_params[param_id]->count(), local_decay,
               temp_[param_id]->cpu_data(),
               net_params[param_id]->mutable_cpu_diff());
         } else {
-          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
+          LOG(FATAL)<< "Unknown regularization type: " << regularization_type;
         }
       }
-
-      caffe_cpu_axpby(net_params[param_id]->count(), local_rate,
-                net_params[param_id]->cpu_diff(), momentum,
-                history_[param_id]->mutable_cpu_data());
-      // copy
-      caffe_copy(net_params[param_id]->count(),
-          history_[param_id]->cpu_data(),
-          net_params[param_id]->mutable_cpu_diff());
     }
+
     break;
-  case Caffe::GPU:
+    case Caffe::GPU:
 #ifndef CPU_ONLY
     for (int param_id = 0; param_id < net_params.size(); ++param_id) {
       // Compute the value to history, and then copy them to the blob's diff.
-      Dtype local_rate = rate * net_params_lr[param_id];
       Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
 
       if (local_decay) {
@@ -585,6 +551,70 @@ void SGDSolver<Dtype>::ComputeUpdateValue() {
           LOG(FATAL) << "Unknown regularization type: " << regularization_type;
         }
       }
+    }
+
+#else
+    NO_GPU;
+#endif
+    break;
+    default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+}
+
+template <typename Dtype>
+void SGDSolver<Dtype>::ClipGradients() {
+  const Dtype clip_gradients = this->param_.clip_gradients();
+  if (clip_gradients < 0) { return; }
+
+  Dtype l2norm_diff = GetGradNorm();
+  if (l2norm_diff > clip_gradients) {
+    Dtype scale_factor = clip_gradients / l2norm_diff;
+    LOG(INFO) << "Gradient clipping: scaling down gradients (L2 norm "
+        << l2norm_diff << " > " << clip_gradients << ") "
+        << "by scale factor " << scale_factor;
+    const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+    for (int i = 0; i < net_params.size(); ++i) {
+      if (this->net_->param_owners()[i] < 0) {
+        net_params[i]->scale_diff(scale_factor);
+      }
+    }
+  }
+}
+
+template <typename Dtype>
+void SGDSolver<Dtype>::ComputeUpdateValue() {
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<float>& net_params_lr = this->net_->params_lr();
+  // get the learning rate
+  Dtype rate = GetLearningRate();
+  TrackAvgGradNorm();
+  DisplayIterInfo(rate);
+  ClipGradients();
+  Dtype momentum = this->param_.momentum();
+
+  this->RegularizeGradient();
+
+  switch (Caffe::mode()) {
+  case Caffe::CPU:
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      // Compute the value to history, and then copy them to the blob's diff.
+      Dtype local_rate = rate * net_params_lr[param_id];
+
+      caffe_cpu_axpby(net_params[param_id]->count(), local_rate,
+                net_params[param_id]->cpu_diff(), momentum,
+                history_[param_id]->mutable_cpu_data());
+      // copy
+      caffe_copy(net_params[param_id]->count(),
+          history_[param_id]->cpu_data(),
+          net_params[param_id]->mutable_cpu_diff());
+    }
+    break;
+  case Caffe::GPU:
+#ifndef CPU_ONLY
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      // Compute the value to history, and then copy them to the blob's diff.
+      Dtype local_rate = rate * net_params_lr[param_id];
 
       caffe_gpu_axpby(net_params[param_id]->count(), local_rate,
                 net_params[param_id]->gpu_diff(), momentum,
@@ -627,16 +657,16 @@ template <typename Dtype>
 void NesterovSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   const vector<float>& net_params_lr = this->net_->params_lr();
-  const vector<float>& net_params_weight_decay =
-      this->net_->params_weight_decay();
   // get the learning rate
   Dtype rate = this->GetLearningRate();
   this->TrackAvgGradNorm();
   this->DisplayIterInfo(rate);
   SGDSolver<Dtype>::ClipGradients();
+
+  this->RegularizeGradient();
+
   Dtype momentum = this->param_.momentum();
-  Dtype weight_decay = this->param_.weight_decay();
-  string regularization_type = this->param_.regularization_type();
+
   switch (Caffe::mode()) {
   case Caffe::CPU:
     for (int param_id = 0; param_id < net_params.size(); ++param_id) {
@@ -646,27 +676,6 @@ void NesterovSolver<Dtype>::ComputeUpdateValue() {
           this->update_[param_id]->mutable_cpu_data());
 
       Dtype local_rate = rate * net_params_lr[param_id];
-      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-
-      if (local_decay) {
-        if (regularization_type == "L2") {
-          // add weight decay
-          caffe_axpy(net_params[param_id]->count(),
-              local_decay,
-              net_params[param_id]->cpu_data(),
-              net_params[param_id]->mutable_cpu_diff());
-        } else if (regularization_type == "L1") {
-          caffe_cpu_sign(net_params[param_id]->count(),
-              net_params[param_id]->cpu_data(),
-              this->temp_[param_id]->mutable_cpu_data());
-          caffe_axpy(net_params[param_id]->count(),
-              local_decay,
-              this->temp_[param_id]->cpu_data(),
-              net_params[param_id]->mutable_cpu_diff());
-        } else {
-          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
-        }
-      }
 
       // update history
       caffe_cpu_axpby(net_params[param_id]->count(), local_rate,
@@ -693,27 +702,6 @@ void NesterovSolver<Dtype>::ComputeUpdateValue() {
           this->update_[param_id]->mutable_gpu_data());
 
       Dtype local_rate = rate * net_params_lr[param_id];
-      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-
-      if (local_decay) {
-        if (regularization_type == "L2") {
-          // add weight decay
-          caffe_gpu_axpy(net_params[param_id]->count(),
-              local_decay,
-              net_params[param_id]->gpu_data(),
-              net_params[param_id]->mutable_gpu_diff());
-        } else if (regularization_type == "L1") {
-          caffe_gpu_sign(net_params[param_id]->count(),
-              net_params[param_id]->gpu_data(),
-              this->temp_[param_id]->mutable_gpu_data());
-          caffe_gpu_axpy(net_params[param_id]->count(),
-              local_decay,
-              this->temp_[param_id]->gpu_data(),
-              net_params[param_id]->mutable_gpu_diff());
-        } else {
-          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
-        }
-      }
 
       // update history
       caffe_gpu_axpby(net_params[param_id]->count(), local_rate,
@@ -743,48 +731,26 @@ template <typename Dtype>
 void AdaGradSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   const vector<float>& net_params_lr = this->net_->params_lr();
-  const vector<float>& net_params_weight_decay =
-      this->net_->params_weight_decay();
   // get the learning rate
   Dtype rate = this->GetLearningRate();
   Dtype delta = this->param_.delta();
   this->TrackAvgGradNorm();
   this->DisplayIterInfo(rate);
   SGDSolver<Dtype>::ClipGradients();
-  Dtype weight_decay = this->param_.weight_decay();
-  string regularization_type = this->param_.regularization_type();
+
+  this->RegularizeGradient();
+
   switch (Caffe::mode()) {
   case Caffe::CPU:
     for (int param_id = 0; param_id < net_params.size(); ++param_id) {
       Dtype local_rate = rate * net_params_lr[param_id];
-      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-
-      if (local_decay) {
-        if (regularization_type == "L2") {
-          // add weight decay
-          caffe_axpy(net_params[param_id]->count(),
-              local_decay,
-              net_params[param_id]->cpu_data(),
-              net_params[param_id]->mutable_cpu_diff());
-        } else if (regularization_type == "L1") {
-          caffe_cpu_sign(net_params[param_id]->count(),
-              net_params[param_id]->cpu_data(),
-              this->temp_[param_id]->mutable_cpu_data());
-          caffe_axpy(net_params[param_id]->count(),
-              local_decay,
-              this->temp_[param_id]->cpu_data(),
-              net_params[param_id]->mutable_cpu_diff());
-        } else {
-          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
-        }
-      }
 
       // compute square of gradient in update
       caffe_powx(net_params[param_id]->count(),
           net_params[param_id]->cpu_diff(), Dtype(2),
           this->update_[param_id]->mutable_cpu_data());
 
-      // update history
+      // update history, which tracks sum of the squared gradients
       caffe_add(net_params[param_id]->count(),
           this->update_[param_id]->cpu_data(),
           this->history_[param_id]->cpu_data(),
@@ -803,6 +769,8 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
                 this->update_[param_id]->cpu_data(),
                 this->update_[param_id]->mutable_cpu_data());
 
+      // perform line search here
+
       // scale and copy
       caffe_cpu_axpby(net_params[param_id]->count(), local_rate,
           this->update_[param_id]->cpu_data(), Dtype(0),
@@ -813,34 +781,13 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
 #ifndef CPU_ONLY
     for (int param_id = 0; param_id < net_params.size(); ++param_id) {
       Dtype local_rate = rate * net_params_lr[param_id];
-      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-
-      if (local_decay) {
-        if (regularization_type == "L2") {
-          // add weight decay
-          caffe_gpu_axpy(net_params[param_id]->count(),
-              local_decay,
-              net_params[param_id]->gpu_data(),
-              net_params[param_id]->mutable_gpu_diff());
-        } else if (regularization_type == "L1") {
-          caffe_gpu_sign(net_params[param_id]->count(),
-              net_params[param_id]->gpu_data(),
-              this->temp_[param_id]->mutable_gpu_data());
-          caffe_gpu_axpy(net_params[param_id]->count(),
-              local_decay,
-              this->temp_[param_id]->gpu_data(),
-              net_params[param_id]->mutable_gpu_diff());
-        } else {
-          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
-        }
-      }
 
       // compute square of gradient in update
       caffe_gpu_powx(net_params[param_id]->count(),
           net_params[param_id]->gpu_diff(), Dtype(2),
           this->update_[param_id]->mutable_gpu_data());
 
-      // update history
+      // update history, which tracks sum of the squared gradients
       caffe_gpu_add(net_params[param_id]->count(),
           this->update_[param_id]->gpu_data(),
           this->history_[param_id]->gpu_data(),
@@ -876,7 +823,10 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
 template <typename Dtype>
 void AdaDeltaSolver<Dtype>::PreSolve() {
   // Add the extra history entries for AdaDelta after those from
-  // SGDSolver::PreSolve
+  // SGDSolver::PreSolve. In the notation from the AdaDelta paper, the first
+  // set of history entries track the  expected value of g^2.  The second set
+  // of history entries track the expected value of (\Delta x)^2 (i.e.: step
+  // sizes squared).
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   for (int i = 0; i < net_params.size(); ++i) {
         const vector<int>& shape = net_params[i]->shape();
@@ -888,38 +838,17 @@ void AdaDeltaSolver<Dtype>::PreSolve() {
 template <typename Dtype>
 void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
-  const vector<float>& net_params_weight_decay =
-          this->net_->params_weight_decay();
   Dtype delta = this->param_.delta();
   Dtype momentum = this->param_.momentum();
-  Dtype weight_decay = this->param_.weight_decay();
-  string regularization_type = this->param_.regularization_type();
+
+  // note: this solver doesn't do gradient clipping
+
+  this->RegularizeGradient();
+
   size_t update_history_offset = net_params.size();
   switch (Caffe::mode()) {
   case Caffe::CPU:
     for (int param_id = 0; param_id < net_params.size(); ++param_id) {
-      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-
-      if (local_decay) {
-        if (regularization_type == "L2") {
-          // add weight decay
-          caffe_axpy(net_params[param_id]->count(),
-              local_decay,
-              net_params[param_id]->cpu_data(),
-              net_params[param_id]->mutable_cpu_diff());
-        } else if (regularization_type == "L1") {
-          caffe_cpu_sign(net_params[param_id]->count(),
-              net_params[param_id]->cpu_data(),
-              this->temp_[param_id]->mutable_cpu_data());
-          caffe_axpy(net_params[param_id]->count(),
-              local_decay,
-              this->temp_[param_id]->cpu_data(),
-              net_params[param_id]->mutable_cpu_diff());
-        } else {
-          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
-        }
-      }
-
       // compute square of gradient in update
       caffe_powx(net_params[param_id]->count(),
           net_params[param_id]->cpu_diff(), Dtype(2),
@@ -961,6 +890,8 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
           this->update_[param_id]->cpu_data(),
           net_params[param_id]->mutable_cpu_diff());
 
+      // perform line search here
+
       // compute square of update
       caffe_powx(net_params[param_id]->count(),
           net_params[param_id]->cpu_diff(), Dtype(2),
@@ -975,28 +906,6 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
   case Caffe::GPU:
 #ifndef CPU_ONLY
     for (int param_id = 0; param_id < net_params.size(); ++param_id) {
-      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-
-      if (local_decay) {
-        if (regularization_type == "L2") {
-          // add weight decay
-          caffe_gpu_axpy(net_params[param_id]->count(),
-              local_decay,
-              net_params[param_id]->gpu_data(),
-              net_params[param_id]->mutable_gpu_diff());
-        } else if (regularization_type == "L1") {
-          caffe_gpu_sign(net_params[param_id]->count(),
-              net_params[param_id]->gpu_data(),
-              this->temp_[param_id]->mutable_gpu_data());
-          caffe_gpu_axpy(net_params[param_id]->count(),
-              local_decay,
-              this->temp_[param_id]->gpu_data(),
-              net_params[param_id]->mutable_gpu_diff());
-        } else {
-          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
-        }
-      }
-
       // compute square of gradient in update
       caffe_gpu_powx(net_params[param_id]->count(),
           net_params[param_id]->gpu_diff(), Dtype(2),
@@ -1065,78 +974,6 @@ void LineSearchSolver<Dtype>::LogSpace(vector<Dtype > & vect,
   for (int i = 0; i < n_alphas; ++i) {
     Dtype linear_val = log_high_alpha - i * delta;
     vect.push_back(pow(base, linear_val));
-  }
-}
-
-template<typename Dtype>
-void LineSearchSolver<Dtype>::RegularizeGradient() {
-  // perform L1 or L2 regularization
-  Dtype weight_decay = this->param_.weight_decay();
-  string regularization_type = this->param_.regularization_type();
-  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
-  const vector<float>& net_params_weight_decay =
-      this->net_->params_weight_decay();
-  const vector<shared_ptr<Blob<Dtype> > >& temp_ = this->temp_;
-  switch (Caffe::mode()) {
-  case Caffe::CPU:
-    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
-      // Compute the value to history, and then copy them to the blob's diff.
-      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-
-      if (local_decay) {
-        if (regularization_type == "L2") {
-          // add weight decay
-          caffe_axpy(net_params[param_id]->count(), local_decay,
-              net_params[param_id]->cpu_data(),
-              net_params[param_id]->mutable_cpu_diff());
-        } else if (regularization_type == "L1") {
-          caffe_cpu_sign(net_params[param_id]->count(),
-              net_params[param_id]->cpu_data(),
-              temp_[param_id]->mutable_cpu_data());
-          caffe_axpy(net_params[param_id]->count(), local_decay,
-              temp_[param_id]->cpu_data(),
-              net_params[param_id]->mutable_cpu_diff());
-        } else {
-          LOG(FATAL)<< "Unknown regularization type: " << regularization_type;
-        }
-      }
-
-    }
-
-    break;
-    case Caffe::GPU:
-#ifndef CPU_ONLY
-    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
-      // Compute the value to history, and then copy them to the blob's diff.
-      Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
-
-      if (local_decay) {
-        if (regularization_type == "L2") {
-          // add weight decay
-          caffe_gpu_axpy(net_params[param_id]->count(),
-              local_decay,
-              net_params[param_id]->gpu_data(),
-              net_params[param_id]->mutable_gpu_diff());
-        } else if (regularization_type == "L1") {
-          caffe_gpu_sign(net_params[param_id]->count(),
-              net_params[param_id]->gpu_data(),
-              temp_[param_id]->mutable_gpu_data());
-          caffe_gpu_axpy(net_params[param_id]->count(),
-              local_decay,
-              temp_[param_id]->gpu_data(),
-              net_params[param_id]->mutable_gpu_diff());
-        } else {
-          LOG(FATAL) << "Unknown regularization type: " << regularization_type;
-        }
-      }
-    }
-
-#else
-    NO_GPU;
-#endif
-    break;
-    default:
-    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
 }
 
@@ -1264,7 +1101,7 @@ Dtype LineSearchSolver<Dtype>::PrepareJumpToAlpha(Dtype param_alpha_next,
   // at grad_alpha_current * grad(theta) where theta represents net_param.data
   // at the beginning of this iteration.
   //
-  // it leaves data at theta - param_alpha_next * grad(theta) and diff at
+  // it leaves data at theta - param_alpha_current * grad(theta) and diff at
   // (param_alpha_next - param_alpha_current) * grad(theta) so that running
   // update on the net will leave the params at theta - param_alpha_next *
   // grad(theta)
@@ -1287,26 +1124,20 @@ Dtype LineSearchSolver<Dtype>::PrepareJumpToAlpha(Dtype param_alpha_next,
   return param_alpha_next - param_alpha_current;
 }
 
-
-template <typename Dtype>
-void LineSearchSolver<Dtype>::ComputeUpdateValue() {
-
+template<typename Dtype>
+void LineSearchSolver<Dtype>::PerformLineSearch(
+    Dtype & final_data_mult, Dtype & final_diff_mult) {
   // get the learning rate
   int start_ind = GetStartingLrIndex();
-//  std::cout << "LineSearchSolver::ComputeUpdateValue start_ind:" << start_ind << std::endl;
+
   Dtype alpha_start = alphas_.at(start_ind);
-
-  this->TrackAvgGradNorm();
-
-  // perform L1 or L2 regularization
-  RegularizeGradient();
 
   BackupDataAndDiff();
 
   shared_ptr<Net<Dtype> > net = this->net();
+
   // ForwardFrom(1) prevents updating the input data in the bottom layer
   Dtype starting_obj = this->net()->ForwardFrom(1);
-
   Dtype alpha = alpha_start;
   Dtype best_alpha = Dtype(0);
   int best_alpha_ind = 0;
@@ -1318,17 +1149,16 @@ void LineSearchSolver<Dtype>::ComputeUpdateValue() {
   Dtype alpha_param_current = Dtype(0);
   Dtype alpha_grad_current = Dtype(1);
 
-  // perform a back-tracking line search from the DUCB model's starting alpha
-  // value
+  // perform a back-tracking line search
   bool have_found_better = false;
   for (int i = start_ind; i < n_alphas; ++i) {
     prev_obj = obj;
     alpha = alphas_.at(i);
-    alpha_grad_current =
-        PrepareJumpToAlpha(alpha, alpha_param_current, alpha_grad_current);
-    net->Update();  // execute the jump
-    alpha_param_current = alpha;
+    alpha_grad_current = PrepareJumpToAlpha(alpha, alpha_param_current,
+        alpha_grad_current);
+    net->Update(); // execute the jump
 
+    alpha_param_current = alpha;
     obj = this->net()->ForwardFrom(1);
 
     // TODO: DEAL WITH INF/NAN OBJECTIVE.  Restore from backup because
@@ -1348,18 +1178,39 @@ void LineSearchSolver<Dtype>::ComputeUpdateValue() {
 
     // the objective has dipped below the starting value and started to rise
     //  again. terminate line search for this minibatch.
-    if (have_found_better and obj > prev_obj) { break; }
+    if (have_found_better && obj > prev_obj) {
+      break;
+    }
   }
 
   this->prev_alpha_index = best_alpha_ind;
 
-  this->DisplayIterInfo(best_alpha);
-
-  // we don't need to keep the new, outputted alpha_grad_current because
-  // we're done with this minibatch
-  PrepareJumpToAlpha(best_alpha, alpha_param_current, alpha_grad_current);
+  final_diff_mult =
+      PrepareJumpToAlpha(best_alpha, alpha_param_current, alpha_grad_current);
   // don't execute the jump with net->update() because that will be done in
   // Solver::Step
+
+  final_data_mult = alpha_param_current;
+}
+
+template<typename Dtype>
+void LineSearchSolver<Dtype>::PerformLineSearch() {
+  Dtype final_data_mult, final_diff_mult;
+  PerformLineSearch(final_data_mult, final_diff_mult);
+}
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::ComputeUpdateValue() {
+  this->TrackAvgGradNorm();
+
+  // perform L1 or L2 regularization
+  this->RegularizeGradient();
+
+  PerformLineSearch();
+
+  Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
+  this->DisplayIterInfo(chosen_alpha);
+
 }
 
 template <typename Dtype>
@@ -1489,8 +1340,7 @@ void LineSearchCurrentSolver<Dtype>::PreSolve() {
 
 template <typename Dtype>
 int LineSearchCurrentSolver<Dtype>::GetStartingLrIndex() {
-  return std::max(this->prev_alpha_index - this->ALPHA_GROW_RATE,
-      0);
+  return std::max(this->prev_alpha_index - this->ALPHA_GROW_RATE, 0);
 }
 
 template <typename Dtype>
