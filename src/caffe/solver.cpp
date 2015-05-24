@@ -273,10 +273,14 @@ void Solver<Dtype>::Solve(const char* resume_file) {
 
 template <typename Dtype>
 void Solver<Dtype>::TestAll() {
+	//PreTest();
   for (int test_net_id = 0; test_net_id < test_nets_.size(); ++test_net_id) {
     Test(test_net_id);
   }
+    //PostTest();
 }
+
+
 
 template <typename Dtype>
 void Solver<Dtype>::Test(const int test_net_id) {
@@ -510,6 +514,14 @@ void SGDSolver<Dtype>::DisplayIterInfo(Dtype rate) {
 }
 
 template <typename Dtype>
+void SGDSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void SGDSolver<Dtype>::PostTest() {
+}
+
+template <typename Dtype>
 void SGDSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   const vector<float>& net_params_lr = this->net_->params_lr();
@@ -621,6 +633,15 @@ void SGDSolver<Dtype>::RestoreSolverState(const SolverState& state) {
   for (int i = 0; i < history_.size(); ++i) {
     history_[i]->FromProto(state.history(i));
   }
+}
+
+template <typename Dtype>
+void NesterovSolver<Dtype>::PreTest() {
+
+}
+
+template <typename Dtype>
+void NesterovSolver<Dtype>::PostTest() {
 }
 
 template <typename Dtype>
@@ -737,6 +758,14 @@ void NesterovSolver<Dtype>::ComputeUpdateValue() {
   default:
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
+}
+
+template <typename Dtype>
+void AdaGradSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void AdaGradSolver<Dtype>::PostTest() {
 }
 
 template <typename Dtype>
@@ -883,6 +912,14 @@ void AdaDeltaSolver<Dtype>::PreSolve() {
         this->history_.push_back(
                 shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
   }
+}
+
+template <typename Dtype>
+void AdaDeltaSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void AdaDeltaSolver<Dtype>::PostTest() {
 }
 
 template <typename Dtype>
@@ -1286,6 +1323,13 @@ Dtype LineSearchSolver<Dtype>::PrepareJumpToAlpha(Dtype param_alpha_next,
 
   return param_alpha_next - param_alpha_current;
 }
+template <typename Dtype>
+void LineSearchSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void LineSearchSolver<Dtype>::PostTest() {
+}
 
 
 template <typename Dtype>
@@ -1535,6 +1579,13 @@ void LineSearchCurrentSolver<Dtype>::RestoreSolverState(const SolverState& state
 }
 
 
+template <typename Dtype>
+void LineSearchCurrentSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void LineSearchCurrentSolver<Dtype>::PostTest() {
+}
 
 
 
@@ -1694,6 +1745,216 @@ void DucbSolver<Dtype>::RestoreSolverState(const SolverState& state) {
 }
 
 
+template <typename Dtype>
+void DucbSolver<Dtype>::PreTest() {
+}
+
+template <typename Dtype>
+void DucbSolver<Dtype>::PostTest() {
+}
+
+template <typename Dtype>
+void PolyakAveragingSolver<Dtype>::PreSolve() {
+	const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+	this->history_.clear();
+	this->update_.clear();
+	this->temp_.clear();
+	net_params_holder_.clear();
+	net_params_averaged_.clear();
+	for (int i = 0; i < net_params.size(); ++i) {
+		const vector<int>& shape = net_params[i]->shape();
+		this->history_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+		this->update_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+		this->temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+		net_params_averaged_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+		net_params_holder_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+	}
+}
+template <typename Dtype>
+void PolyakAveragingSolver<Dtype>::PreTest() {
+ const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+ for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+	 // store the current parameter values (net_params) in net_params_holder_
+	 caffe_copy(net_params[param_id]->count(),
+	   				 net_params[param_id]->cpu_data(),
+	   				 net_params_holder_[param_id]->mutable_cpu_data());
+	 // Replace the net_params with the averaged values
+	   caffe_copy(net_params[param_id]->count(),
+				 net_params_averaged_[param_id]->cpu_data(),
+				 net_params[param_id]->mutable_cpu_data());
+   }
+
+}
+
+template <typename Dtype>
+void PolyakAveragingSolver<Dtype>::PostTest() {
+	const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+	 for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+		 // Get back to the previous parameters during training
+		 caffe_copy(net_params[param_id]->count(),
+				 	 	 net_params_holder_[param_id]->mutable_cpu_data(),
+				         net_params[param_id]->mutable_cpu_data());
+	   }
+
+}
+
+template <typename Dtype>
+void PolyakAveragingSolver<Dtype>::ComputeUpdateValue() {
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<float>& net_params_lr = this->net_->params_lr();
+  const vector<float>& net_params_weight_decay =
+	  this->net_->params_weight_decay();
+  // get the learning rate
+  Dtype rate = SGDSolver<Dtype>::GetLearningRate();
+  Dtype polyak_coefficient = this->param_.polyak_coefficient();
+  if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
+	LOG(INFO) << "Iteration " << this->iter_ << ", lr = " << rate;
+  }
+  SGDSolver<Dtype>::ClipGradients();
+  Dtype momentum = this->param_.momentum();
+  Dtype weight_decay = this->param_.weight_decay();
+  string regularization_type = this->param_.regularization_type();
+  switch (Caffe::mode()) {
+  case Caffe::CPU:
+	for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+	  // Compute the value to history, and then copy them to the blob's diff.
+	  Dtype local_rate = rate * net_params_lr[param_id];
+	  Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
+
+	  if (local_decay) {
+		if (regularization_type == "L2") {
+		  // add weight decay
+		  caffe_axpy(net_params[param_id]->count(),
+			  local_decay,
+			  net_params[param_id]->cpu_data(),
+			  net_params[param_id]->mutable_cpu_diff());
+		} else if (regularization_type == "L1") {
+		  caffe_cpu_sign(net_params[param_id]->count(),
+			  net_params[param_id]->cpu_data(),
+			  this->temp_[param_id]->mutable_cpu_data());
+		  caffe_axpy(net_params[param_id]->count(),
+			  local_decay,
+			  this->temp_[param_id]->cpu_data(),
+			  net_params[param_id]->mutable_cpu_diff());
+		} else {
+		  LOG(FATAL) << "Unknown regularization type: " << regularization_type;
+		}
+	  }
+
+ // alpha*gradient + mu * previous weight update
+	  caffe_cpu_axpby(net_params[param_id]->count(), local_rate,
+				net_params[param_id]->cpu_diff(), momentum,
+				this->history_[param_id]->mutable_cpu_data());
+	  // Not so sure about whether it should be addition or subtraction
+	  // theta_(t+1)=theta_t-gradient
+	  // Here temp_ is used to store theta_t+1,
+	  //theta_t is net_params[param_id]->cpu_data()
+	  //current gradient is in history_ due to previous axpby update
+	  caffe_add(net_params[param_id]->count(),
+			  net_params[param_id]->cpu_data(),
+			  this->history_[param_id]->cpu_data(),
+	          this->temp_[param_id]->mutable_cpu_data());
+	  // theta_tilde_t+1= polyak_coeff*theta_tilde_t
+	  //+(1-polyak_coefficient)*theta_(t+1)
+	  caffe_cpu_axpby(net_params[param_id]->count(), (1-polyak_coefficient),
+			  this->temp_[param_id]->mutable_cpu_data(), polyak_coefficient,
+	  		  net_params_averaged_[param_id]->mutable_cpu_data());
+
+	  // copy
+	  caffe_copy(net_params[param_id]->count(),
+		  this->history_[param_id]->cpu_data(),
+		  net_params[param_id]->mutable_cpu_diff());
+	}
+	break;
+  case Caffe::GPU:
+#ifndef CPU_ONLY
+	for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+	  // Compute the value to history, and then copy them to the blob's diff.
+	  Dtype local_rate = rate * net_params_lr[param_id];
+	  Dtype local_decay = weight_decay * net_params_weight_decay[param_id];
+
+	  if (local_decay) {
+		if (regularization_type == "L2") {
+		  // add weight decay
+		  caffe_gpu_axpy(net_params[param_id]->count(),
+			  local_decay,
+			  net_params[param_id]->gpu_data(),
+			  net_params[param_id]->mutable_gpu_diff());
+		} else if (regularization_type == "L1") {
+		  caffe_gpu_sign(net_params[param_id]->count(),
+			  net_params[param_id]->gpu_data(),
+			  this->temp_[param_id]->mutable_gpu_data());
+		  caffe_gpu_axpy(net_params[param_id]->count(),
+			  local_decay,
+			  this->temp_[param_id]->gpu_data(),
+			  net_params[param_id]->mutable_gpu_diff());
+		} else {
+		  LOG(FATAL) << "Unknown regularization type: " << regularization_type;
+		}
+	  }
+
+	  caffe_gpu_axpby(net_params[param_id]->count(), local_rate,
+				net_params[param_id]->gpu_diff(), momentum,
+				this->history_[param_id]->mutable_gpu_data());
+
+	  // Not so sure about whether it should be addition or subtraction
+	  // theta_(t+1)=theta_t-gradient
+	  // Here temp_ is used to store theta_t+1,
+	  //theta_t is net_params[param_id]->cpu_data()
+	  caffe_gpu_add(net_params[param_id]->count(),
+			  net_params[param_id]->cpu_data(),
+			  this->history_[param_id]->cpu_data(),
+	          this->temp_[param_id]->mutable_cpu_data());
+
+	  caffe_gpu_axpby(net_params[param_id]->count(), (1-polyak_coefficient),
+			  this->temp_[param_id]->mutable_cpu_data(), polyak_coefficient,
+	  		  net_params_averaged_[param_id]->mutable_cpu_data());
+
+
+	  // copy
+	  caffe_copy(net_params[param_id]->count(),
+		  this->history_[param_id]->gpu_data(),
+		  net_params[param_id]->mutable_gpu_diff());
+	}
+#else
+	NO_GPU;
+#endif
+	break;
+  default:
+	LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+}
+
+template <typename Dtype>
+void PolyakAveragingSolver<Dtype>::SnapshotSolverState(SolverState* state) {
+	state->clear_history();
+	for (int i = 0; i < this->history_.size(); ++i) {
+	   // Add history
+	   BlobProto* history_blob = state->add_history();
+	   this->history_[i]->ToProto(history_blob);
+}
+
+	for (int i = 0; i < net_params_averaged_.size(); ++i) {
+		   // Add net_params_averaged to history
+		   BlobProto* theta_tilde_blob = state->add_history();
+		   net_params_averaged_[i]->ToProto(theta_tilde_blob);
+	}
+}
+template <typename Dtype>
+void PolyakAveragingSolver<Dtype>::RestoreSolverState(const SolverState& state) {
+	  CHECK_EQ(state.history_size(), this->history_.size()+net_params_averaged_.size())
+	      << "Incorrect length of history and net_params_averaged blobs.";
+	  LOG(INFO) << "PolyakAveragingSolver: restoring history";
+	  for (int i = 0; i < this->history_.size(); ++i) {
+		  this->history_[i]->FromProto(state.history(i));
+	  }
+	  for (int i = 0; i < this->history_.size(); ++i) {
+		net_params_averaged_[i]->FromProto(state.history(i+this->history_.size()));
+	  }
+
+}
+
+
 INSTANTIATE_CLASS(Solver);
 INSTANTIATE_CLASS(SGDSolver);
 INSTANTIATE_CLASS(NesterovSolver);
@@ -1702,5 +1963,5 @@ INSTANTIATE_CLASS(AdaDeltaSolver);
 INSTANTIATE_CLASS(LineSearchSolver);
 INSTANTIATE_CLASS(LineSearchCurrentSolver);
 INSTANTIATE_CLASS(DucbSolver);
-
+INSTANTIATE_CLASS(PolyakAveragingSolver);
 }  // namespace caffe
