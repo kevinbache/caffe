@@ -1445,7 +1445,8 @@ void LineSearchCurrentSolver<Dtype>::PreSolve() {
 
   this->ALPHA_GROW_RATE = 1;
   // TODO: change back to 0?
-  this->prev_alpha_index = this->n_alphas;
+//  this->prev_alpha_index = this->n_alphas;
+  this->prev_alpha_index = -this->ALPHA_GROW_RATE;
 
 // really i want this to replace the presolve from sgdsolver because
 // i don't want history_, only temp_.
