@@ -919,10 +919,10 @@ void AdaGradLineSearchSolver<Dtype>::ComputeUpdateValue() {
 template <typename Dtype>
 void AdaDeltaSolver<Dtype>::PreSolve() {
   // Add the extra history entries for AdaDelta after those from
-  // SGDSolver::PreSolve. In the notation from the AdaDelta paper, the first
-  // set of history entries track the  expected value of g^2.  The second set
-  // of history entries track the expected value of (\Delta x)^2 (i.e.: step
-  // sizes squared).
+  // SGDSolver::PreSolve and possible LineSearchSolver::PreSolve. In the
+  // notation from the AdaDelta paper, the first set of history entries track
+  //  the expected value of g^2.  The second set of history entries track the
+  // expected value of (\Delta x)^2 (i.e.: step sizes squared).
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   for (int i = 0; i < net_params.size(); ++i) {
         const vector<int>& shape = net_params[i]->shape();
@@ -937,7 +937,7 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
   Dtype delta = this->param_.delta();
   Dtype momentum = this->param_.momentum();
 
-  // note: this solver doesn't do gradient clipping
+  this->ClipGradients();
 
   this->RegularizeGradient();
 
@@ -1061,6 +1061,195 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
 }
+
+
+
+
+
+
+
+
+template <typename Dtype>
+void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  Dtype delta = this->param_.delta();
+  Dtype momentum = this->param_.momentum();
+
+  this->ClipGradients();
+
+  this->RegularizeGradient();
+
+  size_t update_history_offset = net_params.size();
+  switch (Caffe::mode()) {
+  case Caffe::CPU:
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      // compute square of gradient in update
+      caffe_powx(net_params[param_id]->count(),
+          net_params[param_id]->cpu_diff(), Dtype(2),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // update history of gradients
+      caffe_cpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
+          this->update_[param_id]->cpu_data(), momentum,
+          this->history_[param_id]->mutable_cpu_data());
+
+      // add delta to history to guard against dividing by zero later
+      caffe_set(net_params[param_id]->count(), delta,
+          this->temp_[param_id]->mutable_cpu_data());
+
+      caffe_add(net_params[param_id]->count(),
+          this->temp_[param_id]->cpu_data(),
+          this->history_[update_history_offset + param_id]->cpu_data(),
+          this->update_[param_id]->mutable_cpu_data());
+
+      caffe_add(net_params[param_id]->count(),
+          this->temp_[param_id]->cpu_data(),
+          this->history_[param_id]->cpu_data(),
+          this->temp_[param_id]->mutable_cpu_data());
+
+      // divide history of updates by history of gradients
+      caffe_div(net_params[param_id]->count(),
+          this->update_[param_id]->cpu_data(),
+          this->temp_[param_id]->cpu_data(),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // jointly compute the RMS of both for update and gradient history
+      caffe_powx(net_params[param_id]->count(),
+          this->update_[param_id]->cpu_data(), Dtype(0.5),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // compute the update
+      caffe_mul(net_params[param_id]->count(),
+          net_params[param_id]->cpu_diff(),
+          this->update_[param_id]->cpu_data(),
+          net_params[param_id]->mutable_cpu_diff());
+
+      // perform line search in the direction chosen by AdaDelta
+      Dtype final_data_mult, final_diff_mult;
+      this->PerformLineSearch(final_data_mult, final_diff_mult);
+      // this leaves
+      // net_params.data at data_start - final_data_mult * diff_start
+      // net_params.diff at final_diff_mult * diff_start
+      // furthermore:
+      //   final_data_mult = alpha_current
+      //   final_diff_mult = alpha_final - alpha_current
+      // so alpha_final = final_diff_mult + final_data_mult
+
+      // compute square of update
+      caffe_powx(net_params[param_id]->count(),
+          net_params[param_id]->cpu_diff(), Dtype(2),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // correct the update to account for the fact that the line search
+      // doesn't leave diff at alpha_final * diff_start
+      Dtype delta_x_correction =
+          (final_diff_mult + final_data_mult) / final_diff_mult;
+      delta_x_correction *= delta_x_correction;
+      caffe_scale(net_params[param_id]->count(),
+          delta_x_correction,
+          this->update_[param_id]->mutable_cpu_data());
+
+      // update history of updates
+      caffe_cpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
+          this->update_[param_id]->cpu_data(), momentum,
+          this->history_[update_history_offset + param_id]->mutable_cpu_data());
+    }
+    break;
+  case Caffe::GPU:
+#ifndef CPU_ONLY
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      // compute square of gradient in update
+      caffe_gpu_powx(net_params[param_id]->count(),
+          net_params[param_id]->gpu_diff(), Dtype(2),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // update history of gradients
+      caffe_gpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
+          this->update_[param_id]->gpu_data(), momentum,
+          this->history_[param_id]->mutable_gpu_data());
+
+      // add delta to history to guard against dividing by zero later
+      caffe_gpu_set(net_params[param_id]->count(), delta,
+          this->temp_[param_id]->mutable_gpu_data());
+
+      caffe_gpu_add(net_params[param_id]->count(),
+          this->temp_[param_id]->gpu_data(),
+          this->history_[update_history_offset + param_id]->gpu_data(),
+          this->update_[param_id]->mutable_gpu_data());
+
+      caffe_gpu_add(net_params[param_id]->count(),
+          this->temp_[param_id]->gpu_data(),
+          this->history_[param_id]->gpu_data(),
+          this->temp_[param_id]->mutable_gpu_data());
+
+      // divide history of updates by history of gradients
+      caffe_gpu_div(net_params[param_id]->count(),
+          this->update_[param_id]->gpu_data(),
+          this->temp_[param_id]->gpu_data(),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // jointly compute the RMS of both for update and gradient history
+      caffe_gpu_powx(net_params[param_id]->count(),
+          this->update_[param_id]->gpu_data(), Dtype(0.5),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // compute the update and copy to net_diff
+      caffe_gpu_mul(net_params[param_id]->count(),
+          net_params[param_id]->gpu_diff(),
+          this->update_[param_id]->gpu_data(),
+          net_params[param_id]->mutable_gpu_diff());
+
+      // perform line search in the direction chosen by AdaDelta
+      Dtype final_data_mult, final_diff_mult;
+      this->PerformLineSearch(final_data_mult, final_diff_mult);
+      // this leaves
+      // net_params.data at data_start - final_data_mult * diff_start
+      // net_params.diff at final_diff_mult * diff_start
+      // furthermore:
+      //   final_data_mult = alpha_current
+      //   final_diff_mult = alpha_final - alpha_current
+      // so alpha_final = final_diff_mult + final_data_mult
+
+
+      // compute square of update
+      caffe_gpu_powx(net_params[param_id]->count(),
+          net_params[param_id]->gpu_diff(), Dtype(2),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // correct the update to account for the fact that the line search
+      // doesn't leave diff at alpha_final * diff_start
+      Dtype delta_x_correction =
+          (final_diff_mult + final_data_mult) / final_diff_mult;
+      delta_x_correction *= delta_x_correction;
+      caffe_scale(net_params[param_id]->count(),
+          delta_x_correction,
+          this->update_[param_id]->mutable_gpu_data());
+
+      // update history of updates
+      caffe_gpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
+          this->update_[param_id]->gpu_data(), momentum,
+          this->history_[update_history_offset + param_id]->mutable_gpu_data());
+    }
+#else
+    NO_GPU;
+#endif
+    break;
+  default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 template<typename Dtype>
 void LineSearchSolver<Dtype>::LogSpace(vector<Dtype > & vect,
@@ -1435,18 +1624,6 @@ void LineSearchCurrentSolver<Dtype>::PreSolve() {
   // start in the middle of the alphas. starting at the top can lead to
   // numerical overflow.
   this->prev_alpha_index = floor(this->n_alphas / 2);
-
-// really i want this to replace the presolve from sgdsolver because
-// i don't want history_, only temp_.
-//
-//  // initialize temporary update memory to same size as net parameters
-//  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
-//  temp_ = this->temp_;
-//  temp_.clear();
-//  for (int i = 0; i < net_params.size(); ++i) {
-//    const vector<int>& shape = net_params[i]->shape();
-//    temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
-//  }
 }
 
 template <typename Dtype>

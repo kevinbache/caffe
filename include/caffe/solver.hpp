@@ -165,6 +165,8 @@ class AdaDeltaSolver : public SGDSolver<Dtype> {
   virtual void PreSolve();
   virtual void ComputeUpdateValue();
   void constructor_sanity_check() {
+    CHECK_EQ(0, this->param_.momentum())
+        << "Momentum cannot be used with AdaDelta.";
     CHECK_EQ(0, this->param_.base_lr())
         << "Learning rate cannot be used with AdaDelta.";
     CHECK_EQ("", this->param_.lr_policy())
@@ -361,9 +363,33 @@ class AdaGradLineSearchSolver : public LineSearchCurrentSolver<Dtype> {
   void constructor_sanity_check() {
     CHECK_EQ(0, this->param_.momentum())
         << "Momentum cannot be used with AdaGradLineSearch.";
+    CHECK_EQ(0, this->param_.base_lr())
+        << "Learning rate cannot be used with AdaGradLineSearch.";
+    CHECK_EQ("", this->param_.lr_policy())
+        << "Learning rate policy cannot be applied to AdaGradLineSearch.";
   }
 
   DISABLE_COPY_AND_ASSIGN(AdaGradLineSearchSolver);
+};
+
+template <typename Dtype>
+class AdaDeltaLineSearchSolver : public LineSearchCurrentSolver<Dtype> {
+ public:
+  explicit AdaDeltaLineSearchSolver(const SolverParameter& param)
+      : LineSearchCurrentSolver<Dtype>(param) { constructor_sanity_check(); }
+  explicit AdaDeltaLineSearchSolver(const string& param_file)
+      : LineSearchCurrentSolver<Dtype>(param_file) { constructor_sanity_check(); }
+
+ protected:
+  virtual void ComputeUpdateValue();
+  void constructor_sanity_check() {
+    CHECK_EQ(0, this->param_.base_lr())
+        << "Learning rate cannot be used with AdaDelta.";
+    CHECK_EQ("", this->param_.lr_policy())
+        << "Learning rate policy cannot be applied to AdaDelta.";
+  }
+
+  DISABLE_COPY_AND_ASSIGN(AdaDeltaLineSearchSolver);
 };
 
 
@@ -390,6 +416,8 @@ Solver<Dtype>* GetSolver(const SolverParameter& param) {
       return new DucbSolver<Dtype>(param);
   case SolverParameter_SolverType_ADAGRADLINE:
       return new AdaGradLineSearchSolver<Dtype>(param);
+  case SolverParameter_SolverType_ADADELTALINE:
+      return new AdaDeltaLineSearchSolver<Dtype>(param);
   default:
       LOG(FATAL) << "Unknown SolverType: " << type;
   }
