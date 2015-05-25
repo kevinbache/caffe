@@ -827,7 +827,6 @@ void AdaGradLineSearchSolver<Dtype>::ComputeUpdateValue() {
   // get the learning rate
   Dtype delta = this->param_.delta();
   this->TrackAvgGradNorm();
-  this->DisplayIterInfo(rate);
   SGDSolver<Dtype>::ClipGradients();
 
   this->RegularizeGradient();
@@ -897,7 +896,7 @@ void AdaGradLineSearchSolver<Dtype>::ComputeUpdateValue() {
                 this->update_[param_id]->mutable_gpu_data());
 
       // scale and copy
-      caffe_gpu_axpby(net_params[param_id]->count(), local_rate,
+      caffe_gpu_axpby(net_params[param_id]->count(), local_scale,
           this->update_[param_id]->gpu_data(), Dtype(0),
           net_params[param_id]->mutable_gpu_diff());
     }

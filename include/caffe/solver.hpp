@@ -151,25 +151,6 @@ class AdaGradSolver : public SGDSolver<Dtype> {
 
 
 template <typename Dtype>
-class AdaGradLineSearchSolver : public LineSearchCurrentSolver<Dtype> {
- public:
-  explicit AdaGradLineSearchSolver(const SolverParameter& param)
-      : LineSearchCurrentSolver<Dtype>(param) { constructor_sanity_check(); }
-  explicit AdaGradLineSearchSolver(const string& param_file)
-      : LineSearchCurrentSolver<Dtype>(param_file) { constructor_sanity_check(); }
-
- protected:
-  virtual void ComputeUpdateValue();
-  void constructor_sanity_check() {
-    CHECK_EQ(0, this->param_.momentum())
-        << "Momentum cannot be used with AdaGradLineSearch.";
-  }
-
-  DISABLE_COPY_AND_ASSIGN(AdaGradLineSearchSolver);
-};
-
-
-template <typename Dtype>
 class AdaDeltaSolver : public SGDSolver<Dtype> {
  public:
   // Note: first, the SGDSolver constructor will be called and will run
@@ -367,6 +348,25 @@ class DucbSolver : public LineSearchSolver<Dtype> {
   DISABLE_COPY_AND_ASSIGN(DucbSolver);
 };
 
+template <typename Dtype>
+class AdaGradLineSearchSolver : public LineSearchCurrentSolver<Dtype> {
+ public:
+  explicit AdaGradLineSearchSolver(const SolverParameter& param)
+      : LineSearchCurrentSolver<Dtype>(param) { constructor_sanity_check(); }
+  explicit AdaGradLineSearchSolver(const string& param_file)
+      : LineSearchCurrentSolver<Dtype>(param_file) { constructor_sanity_check(); }
+
+ protected:
+  virtual void ComputeUpdateValue();
+  void constructor_sanity_check() {
+    CHECK_EQ(0, this->param_.momentum())
+        << "Momentum cannot be used with AdaGradLineSearch.";
+  }
+
+  DISABLE_COPY_AND_ASSIGN(AdaGradLineSearchSolver);
+};
+
+
 
 
 template <typename Dtype>
@@ -380,7 +380,7 @@ Solver<Dtype>* GetSolver(const SolverParameter& param) {
       return new NesterovSolver<Dtype>(param);
   case SolverParameter_SolverType_ADAGRAD:
       return new AdaGradSolver<Dtype>(param);
-  case SolverParameter_SolverType_ADAGRAD:
+  case SolverParameter_SolverType_ADAGRADLINE:
       return new AdaGradLineSearchSolver<Dtype>(param);
   case SolverParameter_SolverType_ADADELTA:
       return new AdaDeltaSolver<Dtype>(param);
