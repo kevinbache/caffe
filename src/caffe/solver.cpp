@@ -1202,9 +1202,9 @@ template <typename Dtype>
 void LineSearchSolver<Dtype>::ScaleDiffByLocalLrParams() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   const vector<float>& net_params_lr = this->net_->params_lr();
-
   for (int param_id = 0; param_id < net_params.size(); ++param_id) {
-    net_params[param_id]->scale_diff(net_params_lr[param_id]);
+    Dtype scale = net_params_lr[param_id];
+    net_params[param_id]->scale_diff(scale);
   }
 }
 
