@@ -1228,7 +1228,7 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
 
   Dtype alpha_start = alphas_.at(start_ind);
 
-  BackupDataAndDiff();
+//  BackupDataAndDiff();
 
   shared_ptr<Net<Dtype> > net = this->net();
 
@@ -1242,8 +1242,8 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
   // work our way back up from the smallest one.
   int best_alpha_ind = this->n_alphas;
 
-  LOG(INFO) << "PLS, start obj: " << \
-      starting_obj << std::endl;
+//  LOG(INFO) << "PLS, start obj: " << \
+//      starting_obj << std::endl;
 
   Dtype best_obj = starting_obj;
   Dtype obj = starting_obj;
@@ -1264,11 +1264,12 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
     alpha_param_current = alpha;
     obj = this->net()->ForwardFrom(1);
 
-    LOG(INFO) << "PLS, ind, alpha, obj: " << \
-        i << ", " << alpha << ", " << obj << std::endl;
+//    LOG(INFO) << "PLS, ind, alpha, obj: " << \
+//        i << ", " << alpha << ", " << obj << std::endl;
 
-    // TODO: DEAL WITH INF/NAN OBJECTIVE.  Restore from backup because
-    // there might be inf/nan entries in the parameters
+    // TODO: DEAL WITH INF/NAN OBJECTIVE / OVERFLOW.  Restore from backup
+    // because there might be bad entries in the parameters
+    // not sure how to detect overflow though.
 
     GrantReward(starting_obj, obj, i);
 
@@ -1289,8 +1290,8 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
     }
   }
 
-  LOG(INFO) << "PLS, best ind, alpha, obj: " << \
-      best_alpha_ind << ", " << best_alpha << ", " << best_obj << std::endl << std::endl;
+//  LOG(INFO) << "PLS, best ind, alpha, obj: " << \
+//      best_alpha_ind << ", " << best_alpha << ", " << best_obj << std::endl << std::endl;
 
   this->prev_alpha_index = best_alpha_ind;
 
@@ -1420,19 +1421,6 @@ void LineSearchSolver<Dtype>::RestoreSolverState(const SolverState& state) {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 template <typename Dtype>
 void LineSearchCurrentSolver<Dtype>::PreSolve() {
 
@@ -1444,9 +1432,9 @@ void LineSearchCurrentSolver<Dtype>::PreSolve() {
       this->log_high_alpha, this->log_low_alpha, this->n_alphas);
 
   this->ALPHA_GROW_RATE = 1;
-  // TODO: change back to 0?
-//  this->prev_alpha_index = this->n_alphas;
-  this->prev_alpha_index = -this->ALPHA_GROW_RATE;
+  // start in the middle of the alphas. starting at the top can lead to
+  // numerical overflow.
+  this->prev_alpha_index = floor(this->n_alphas / 2);
 
 // really i want this to replace the presolve from sgdsolver because
 // i don't want history_, only temp_.
