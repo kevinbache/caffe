@@ -273,11 +273,11 @@ void Solver<Dtype>::Solve(const char* resume_file) {
 
 template <typename Dtype>
 void Solver<Dtype>::TestAll() {
-	//PreTest();
+	this->PreTest();
   for (int test_net_id = 0; test_net_id < test_nets_.size(); ++test_net_id) {
     Test(test_net_id);
   }
-    //PostTest();
+   this->PostTest();
 }
 
 
@@ -440,6 +440,7 @@ void SGDSolver<Dtype>::PreSolve() {
   history_.clear();
   update_.clear();
   temp_.clear();
+  LOG(INFO) << "Inside SGDSolver PreSolve ---------------";
   for (int i = 0; i < net_params.size(); ++i) {
     const vector<int>& shape = net_params[i]->shape();
     history_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
@@ -515,6 +516,7 @@ void SGDSolver<Dtype>::DisplayIterInfo(Dtype rate) {
 
 template <typename Dtype>
 void SGDSolver<Dtype>::PreTest() {
+  LOG(INFO) << "Inside SGD PreTest";
 }
 
 template <typename Dtype>
@@ -635,14 +637,6 @@ void SGDSolver<Dtype>::RestoreSolverState(const SolverState& state) {
   }
 }
 
-template <typename Dtype>
-void NesterovSolver<Dtype>::PreTest() {
-
-}
-
-template <typename Dtype>
-void NesterovSolver<Dtype>::PostTest() {
-}
 
 template <typename Dtype>
 void NesterovSolver<Dtype>::ComputeUpdateValue() {
@@ -758,14 +752,6 @@ void NesterovSolver<Dtype>::ComputeUpdateValue() {
   default:
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
-}
-
-template <typename Dtype>
-void AdaGradSolver<Dtype>::PreTest() {
-}
-
-template <typename Dtype>
-void AdaGradSolver<Dtype>::PostTest() {
 }
 
 template <typename Dtype>
@@ -914,13 +900,6 @@ void AdaDeltaSolver<Dtype>::PreSolve() {
   }
 }
 
-template <typename Dtype>
-void AdaDeltaSolver<Dtype>::PreTest() {
-}
-
-template <typename Dtype>
-void AdaDeltaSolver<Dtype>::PostTest() {
-}
 
 template <typename Dtype>
 void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
@@ -1323,13 +1302,6 @@ Dtype LineSearchSolver<Dtype>::PrepareJumpToAlpha(Dtype param_alpha_next,
 
   return param_alpha_next - param_alpha_current;
 }
-template <typename Dtype>
-void LineSearchSolver<Dtype>::PreTest() {
-}
-
-template <typename Dtype>
-void LineSearchSolver<Dtype>::PostTest() {
-}
 
 
 template <typename Dtype>
@@ -1579,14 +1551,6 @@ void LineSearchCurrentSolver<Dtype>::RestoreSolverState(const SolverState& state
 }
 
 
-template <typename Dtype>
-void LineSearchCurrentSolver<Dtype>::PreTest() {
-}
-
-template <typename Dtype>
-void LineSearchCurrentSolver<Dtype>::PostTest() {
-}
-
 
 
 
@@ -1745,40 +1709,35 @@ void DucbSolver<Dtype>::RestoreSolverState(const SolverState& state) {
 }
 
 
-template <typename Dtype>
-void DucbSolver<Dtype>::PreTest() {
-}
 
-template <typename Dtype>
-void DucbSolver<Dtype>::PostTest() {
-}
 
 template <typename Dtype>
 void PolyakAveragingSolver<Dtype>::PreSolve() {
 	const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
-	this->history_.clear();
-	this->update_.clear();
-	this->temp_.clear();
 	net_params_holder_.clear();
 	net_params_averaged_.clear();
 	for (int i = 0; i < net_params.size(); ++i) {
 		const vector<int>& shape = net_params[i]->shape();
-		this->history_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
-		this->update_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
-		this->temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
 		net_params_averaged_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
 		net_params_holder_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
 	}
 }
 template <typename Dtype>
 void PolyakAveragingSolver<Dtype>::PreTest() {
+  LOG(INFO) << "Inside Polyak PreTest";
  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
  for (int param_id = 0; param_id < net_params.size(); ++param_id) {
 	 // store the current parameter values (net_params) in net_params_holder_
-	 caffe_copy(net_params[param_id]->count(),
+
+   caffe_copy(net_params[param_id]->count(),
 	   				 net_params[param_id]->cpu_data(),
 	   				 net_params_holder_[param_id]->mutable_cpu_data());
-	 // Replace the net_params with the averaged values
+	 /*
+   caffe_copy(net_params[param_id]->count(),
+                net_params[param_id]->cpu_data(),
+                this->temp_[param_id]->mutable_cpu_data());
+  */
+   // Replace the net_params with the averaged values
 	   caffe_copy(net_params[param_id]->count(),
 				 net_params_averaged_[param_id]->cpu_data(),
 				 net_params[param_id]->mutable_cpu_data());
@@ -1841,21 +1800,19 @@ void PolyakAveragingSolver<Dtype>::ComputeUpdateValue() {
 		}
 	  }
 
- // alpha*gradient + mu * previous weight update
-	  caffe_cpu_axpby(net_params[param_id]->count(), local_rate,
+   caffe_cpu_axpby(net_params[param_id]->count(), local_rate,
 				net_params[param_id]->cpu_diff(), momentum,
 				this->history_[param_id]->mutable_cpu_data());
-	  // Not so sure about whether it should be addition or subtraction
-	  // theta_(t+1)=theta_t-gradient
-	  // Here temp_ is used to store theta_t+1,
-	  //theta_t is net_params[param_id]->cpu_data()
+	  // weights_(t+1)=weights_t-gradient
+	  // Here temp_ is used to store weights_(t+1),
+	  //weights_t is net_params[param_id]->cpu_data()
 	  //current gradient is in history_ due to previous axpby update
 	  caffe_add(net_params[param_id]->count(),
 			  net_params[param_id]->cpu_data(),
 			  this->history_[param_id]->cpu_data(),
 	          this->temp_[param_id]->mutable_cpu_data());
-	  // theta_tilde_t+1= polyak_coeff*theta_tilde_t
-	  //+(1-polyak_coefficient)*theta_(t+1)
+	  // AveragedParameters_(t+1)= polyak_coeff*AveragedParameters_(t)
+	  //+(1-polyak_coefficient)*weights_(t+1)
 	  caffe_cpu_axpby(net_params[param_id]->count(), (1-polyak_coefficient),
 			  this->temp_[param_id]->mutable_cpu_data(), polyak_coefficient,
 	  		  net_params_averaged_[param_id]->mutable_cpu_data());
@@ -1936,8 +1893,8 @@ void PolyakAveragingSolver<Dtype>::SnapshotSolverState(SolverState* state) {
 
 	for (int i = 0; i < net_params_averaged_.size(); ++i) {
 		   // Add net_params_averaged to history
-		   BlobProto* theta_tilde_blob = state->add_history();
-		   net_params_averaged_[i]->ToProto(theta_tilde_blob);
+		   BlobProto* net_params_blob = state->add_history();
+		   net_params_averaged_[i]->ToProto(net_params_blob);
 	}
 }
 template <typename Dtype>

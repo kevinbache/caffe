@@ -59,13 +59,14 @@ class Solver {
   // written to disk together with the learned net.
   void Snapshot();
   // The test routine
-  void TestAll();
-  void Test(const int test_net_id = 0);
+  virtual void TestAll();
+  virtual void Test(const int test_net_id = 0);
   virtual void SnapshotSolverState(SolverState* state) = 0;
   virtual void RestoreSolverState(const SolverState& state) = 0;
   void DisplayOutputBlobs(const int net_id);
   virtual void PreTest()=0;
   virtual void PostTest()=0;
+  virtual void PreSolve()=0;
   SolverParameter param_;
   int iter_;
   int current_step_;
@@ -124,8 +125,6 @@ class NesterovSolver : public SGDSolver<Dtype> {
 
  protected:
   virtual void ComputeUpdateValue();
-  virtual void PreTest();
-  virtual void PostTest();
   DISABLE_COPY_AND_ASSIGN(NesterovSolver);
 };
 
@@ -139,8 +138,6 @@ class AdaGradSolver : public SGDSolver<Dtype> {
 
  protected:
   virtual void ComputeUpdateValue();
-  virtual void PreTest();
-  virtual void PostTest();
   void constructor_sanity_check() {
     CHECK_EQ(0, this->param_.momentum())
         << "Momentum cannot be used with AdaGrad.";
@@ -160,9 +157,6 @@ class AdaDeltaSolver : public SGDSolver<Dtype> {
  protected:
   virtual void PreSolve();
   virtual void ComputeUpdateValue();
-  virtual void PreTest();
-  virtual void PostTest();
-
   void constructor_sanity_check() {
     CHECK_EQ(0, this->param_.base_lr())
         << "Learning rate cannot be used with AdaDelta.";
@@ -184,9 +178,6 @@ class LineSearchSolver : public SGDSolver<Dtype> {
  protected:
   virtual void PreSolve();
   virtual void ComputeUpdateValue();
-  virtual void PreTest();
-  virtual void PostTest();
-
   virtual void SnapshotSolverState(SolverState* state);
   virtual void RestoreSolverState(const SolverState& state);
 
@@ -268,8 +259,6 @@ class LineSearchCurrentSolver : public LineSearchSolver<Dtype> {
 
  protected:
   virtual void PreSolve();
-  virtual void PreTest();
-  virtual void PostTest();
 
   virtual void SnapshotSolverState(SolverState* state);
   virtual void RestoreSolverState(const SolverState& state);
@@ -302,9 +291,6 @@ class DucbSolver : public LineSearchSolver<Dtype> {
 
  protected:
   virtual void PreSolve();
-  virtual void PreTest();
-  virtual void PostTest();
-
   virtual void SnapshotSolverState(SolverState* state);
   virtual void RestoreSolverState(const SolverState& state);
 
@@ -346,9 +332,9 @@ template <typename Dtype>
 class PolyakAveragingSolver : public SGDSolver<Dtype> {
  public:
   explicit PolyakAveragingSolver(const SolverParameter& param)
-      : SGDSolver<Dtype>(param) {}
+      : SGDSolver<Dtype>(param) {PreSolve();}
   explicit PolyakAveragingSolver(const string& param_file)
-      : SGDSolver<Dtype>(param_file) {}
+      : SGDSolver<Dtype>(param_file) {PreSolve();}
 
  protected:
   virtual void PreTest();
@@ -357,7 +343,6 @@ class PolyakAveragingSolver : public SGDSolver<Dtype> {
   virtual void ComputeUpdateValue();
   virtual void SnapshotSolverState(SolverState* state);
   virtual void RestoreSolverState(const SolverState& state);
-
   vector<shared_ptr<Blob<Dtype> > > net_params_averaged_,net_params_holder_;
   DISABLE_COPY_AND_ASSIGN(PolyakAveragingSolver);
 };
