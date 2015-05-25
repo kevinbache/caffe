@@ -1213,16 +1213,15 @@ template <typename Dtype>
 void LineSearchSolver<Dtype>::ComputeUpdateValue() {
   this->TrackAvgGradNorm();
 
-  ScaleDiffByLocalLrParams();
-
   // perform L1 or L2 regularization
   this->RegularizeGradient();
+
+  ScaleDiffByLocalLrParams();
 
   PerformLineSearch();
 
   Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
   this->DisplayIterInfo(chosen_alpha);
-
 }
 
 template <typename Dtype>
