@@ -380,8 +380,6 @@ Solver<Dtype>* GetSolver(const SolverParameter& param) {
       return new NesterovSolver<Dtype>(param);
   case SolverParameter_SolverType_ADAGRAD:
       return new AdaGradSolver<Dtype>(param);
-  case SolverParameter_SolverType_ADAGRADLINE:
-      return new AdaGradLineSearchSolver<Dtype>(param);
   case SolverParameter_SolverType_ADADELTA:
       return new AdaDeltaSolver<Dtype>(param);
   case SolverParameter_SolverType_LINE:
@@ -390,6 +388,8 @@ Solver<Dtype>* GetSolver(const SolverParameter& param) {
       return new LineSearchCurrentSolver<Dtype>(param);
   case SolverParameter_SolverType_DUCB:
       return new DucbSolver<Dtype>(param);
+  case SolverParameter_SolverType_ADAGRADLINE:
+      return new AdaGradLineSearchSolver<Dtype>(param);
   default:
       LOG(FATAL) << "Unknown SolverType: " << type;
   }

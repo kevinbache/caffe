@@ -827,9 +827,9 @@ void AdaGradLineSearchSolver<Dtype>::ComputeUpdateValue() {
   // get the learning rate
   Dtype delta = this->param_.delta();
   this->TrackAvgGradNorm();
-  SGDSolver<Dtype>::ClipGradients();
+//  SGDSolver<Dtype>::ClipGradients();
 
-  this->RegularizeGradient();
+//  this->RegularizeGradient();
 
   switch (Caffe::mode()) {
   case Caffe::CPU:
