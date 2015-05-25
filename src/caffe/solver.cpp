@@ -733,8 +733,10 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
   // get the learning rate
   Dtype rate = this->GetLearningRate();
   Dtype delta = this->param_.delta();
+
   this->TrackAvgGradNorm();
   this->DisplayIterInfo(rate);
+
   SGDSolver<Dtype>::ClipGradients();
 
   this->RegularizeGradient();
@@ -824,12 +826,13 @@ void AdaGradLineSearchSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   const vector<float>& net_params_lr = this->net_->params_lr();
 
-  // get the learning rate
   Dtype delta = this->param_.delta();
-  this->TrackAvgGradNorm();
-//  SGDSolver<Dtype>::ClipGradients();
 
-//  this->RegularizeGradient();
+  this->TrackAvgGradNorm();
+
+  SGDSolver<Dtype>::ClipGradients();
+
+  this->RegularizeGradient();
 
   switch (Caffe::mode()) {
   case Caffe::CPU:
@@ -912,8 +915,6 @@ void AdaGradLineSearchSolver<Dtype>::ComputeUpdateValue() {
   this->PerformLineSearch();
   Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
   this->DisplayIterInfo(chosen_alpha);
-
-
 }
 
 template <typename Dtype>

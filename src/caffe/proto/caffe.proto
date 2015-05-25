@@ -189,7 +189,7 @@ message SolverParameter {
     LINECURRENT = 5;
     DUCB = 6;
     ADAGRADLINE = 7;
-    ADADELTALINE = 8;    
+    ADADELTALINE = 8;
   }
   optional SolverType solver_type = 30 [default = SGD];
   // numerical stability for AdaGrad

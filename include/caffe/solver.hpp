@@ -384,9 +384,9 @@ class AdaDeltaLineSearchSolver : public LineSearchCurrentSolver<Dtype> {
   virtual void ComputeUpdateValue();
   void constructor_sanity_check() {
     CHECK_EQ(0, this->param_.base_lr())
-        << "Learning rate cannot be used with AdaDelta.";
+        << "Learning rate cannot be used with AdaDeltaLineSearchSolver.";
     CHECK_EQ("", this->param_.lr_policy())
-        << "Learning rate policy cannot be applied to AdaDelta.";
+        << "Learning rate policy cannot be used with AdaDeltaLineSearchSolver.";
   }
 
   DISABLE_COPY_AND_ASSIGN(AdaDeltaLineSearchSolver);
