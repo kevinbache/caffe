@@ -1213,7 +1213,7 @@ template <typename Dtype>
 void LineSearchSolver<Dtype>::ComputeUpdateValue() {
   this->TrackAvgGradNorm();
 
-//  ScaleDiffByLocalLrParams();
+  ScaleDiffByLocalLrParams();
 
   // perform L1 or L2 regularization
   this->RegularizeGradient();
