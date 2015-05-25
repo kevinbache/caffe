@@ -1257,6 +1257,9 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
     alpha_param_current = alpha;
     obj = this->net()->ForwardFrom(1);
 
+    std::cout << "PLS, ind, alpha, obj:" << \
+        i << ", " << alpha << ", " << obj << std::endl;
+
     // TODO: DEAL WITH INF/NAN OBJECTIVE.  Restore from backup because
     // there might be inf/nan entries in the parameters
 
@@ -1278,6 +1281,9 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
       break;
     }
   }
+
+  std::cout << "PLS, best ind, alpha, obj:" << \
+      best_alpha_ind << ", " << best_alpha << ", " << best_obj << std::endl << std::endl;
 
   this->prev_alpha_index = best_alpha_ind;
 
