@@ -1236,7 +1236,7 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
   Dtype starting_obj = this->net()->ForwardFrom(1);
   Dtype alpha = alpha_start;
   Dtype best_alpha = Dtype(0);
-  int best_alpha_ind = 0;
+  int best_alpha_ind = this->n_alphas;
 
   LOG(INFO) << "PLS, start obj: " << \
       starting_obj << std::endl;
@@ -1440,7 +1440,8 @@ void LineSearchCurrentSolver<Dtype>::PreSolve() {
       this->log_high_alpha, this->log_low_alpha, this->n_alphas);
 
   this->ALPHA_GROW_RATE = 1;
-  this->prev_alpha_index = 0;
+  // TODO: change back to 0?
+  this->prev_alpha_index = this->n_alphas;
 
 // really i want this to replace the presolve from sgdsolver because
 // i don't want history_, only temp_.
