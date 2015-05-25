@@ -184,10 +184,11 @@ message SolverParameter {
     SGD = 0;
     NESTEROV = 1;
     ADAGRAD = 2;
-    ADADELTA = 3;
-    LINE = 4;
-    LINECURRENT = 5;
-    DUCB = 6;
+    ADAGRADLINE = 3;
+    ADADELTA = 4;
+    LINE = 5;
+    LINECURRENT = 6;
+    DUCB = 7;
   }
   optional SolverType solver_type = 30 [default = SGD];
   // numerical stability for AdaGrad

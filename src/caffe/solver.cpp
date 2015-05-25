@@ -820,6 +820,104 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
 }
 
 template <typename Dtype>
+void AdaGradLineSearchSolver<Dtype>::ComputeUpdateValue() {
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<float>& net_params_lr = this->net_->params_lr();
+
+  // get the learning rate
+  Dtype delta = this->param_.delta();
+  this->TrackAvgGradNorm();
+  this->DisplayIterInfo(rate);
+  SGDSolver<Dtype>::ClipGradients();
+
+  this->RegularizeGradient();
+
+  switch (Caffe::mode()) {
+  case Caffe::CPU:
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      Dtype local_scale = net_params_lr[param_id];
+
+      // compute square of gradient in update
+      caffe_powx(net_params[param_id]->count(),
+          net_params[param_id]->cpu_diff(), Dtype(2),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // update history, which tracks sum of the squared gradients
+      caffe_add(net_params[param_id]->count(),
+          this->update_[param_id]->cpu_data(),
+          this->history_[param_id]->cpu_data(),
+          this->history_[param_id]->mutable_cpu_data());
+
+      // prepare update
+      caffe_powx(net_params[param_id]->count(),
+                this->history_[param_id]->cpu_data(), Dtype(0.5),
+                this->update_[param_id]->mutable_cpu_data());
+
+      caffe_add_scalar(net_params[param_id]->count(),
+                delta, this->update_[param_id]->mutable_cpu_data());
+
+      caffe_div(net_params[param_id]->count(),
+                net_params[param_id]->cpu_diff(),
+                this->update_[param_id]->cpu_data(),
+                this->update_[param_id]->mutable_cpu_data());
+
+      // scale and copy
+      caffe_cpu_axpby(net_params[param_id]->count(), local_scale,
+          this->update_[param_id]->cpu_data(), Dtype(0),
+          net_params[param_id]->mutable_cpu_diff());
+    }
+    break;
+  case Caffe::GPU:
+#ifndef CPU_ONLY
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      Dtype local_scale = net_params_lr[param_id];
+
+      // compute square of gradient in update
+      caffe_gpu_powx(net_params[param_id]->count(),
+          net_params[param_id]->gpu_diff(), Dtype(2),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // update history, which tracks sum of the squared gradients
+      caffe_gpu_add(net_params[param_id]->count(),
+          this->update_[param_id]->gpu_data(),
+          this->history_[param_id]->gpu_data(),
+          this->history_[param_id]->mutable_gpu_data());
+
+      // prepare update
+      caffe_gpu_powx(net_params[param_id]->count(),
+                this->history_[param_id]->gpu_data(), Dtype(0.5),
+                this->update_[param_id]->mutable_gpu_data());
+
+      caffe_gpu_add_scalar(net_params[param_id]->count(),
+                delta, this->update_[param_id]->mutable_gpu_data());
+
+      caffe_gpu_div(net_params[param_id]->count(),
+                net_params[param_id]->gpu_diff(),
+                this->update_[param_id]->gpu_data(),
+                this->update_[param_id]->mutable_gpu_data());
+
+      // scale and copy
+      caffe_gpu_axpby(net_params[param_id]->count(), local_rate,
+          this->update_[param_id]->gpu_data(), Dtype(0),
+          net_params[param_id]->mutable_gpu_diff());
+    }
+#else
+    NO_GPU;
+#endif
+    break;
+  default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+
+  // perform a line search in the AdaGrad direction
+  this->PerformLineSearch();
+  Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
+  this->DisplayIterInfo(chosen_alpha);
+
+
+}
+
+template <typename Dtype>
 void AdaDeltaSolver<Dtype>::PreSolve() {
   // Add the extra history entries for AdaDelta after those from
   // SGDSolver::PreSolve. In the notation from the AdaDelta paper, the first
@@ -1373,6 +1471,12 @@ void LineSearchCurrentSolver<Dtype>::RestoreSolverState(const SolverState& state
           "1-dimensional blobs representing alphas, rewards, and numbers.\n" \
           "Instead found: " << state.history_size() ;
   LOG(INFO) << "LineSearchCurrentSolver: restoring history";
+  LOG(INFO) << "WARNING: UNTESTED!";
+  LOG(INFO) << "WARNING: UNTESTED!";
+  LOG(INFO) << "WARNING: UNTESTED!";
+  LOG(INFO) << "WARNING: UNTESTED!";
+  LOG(INFO) << "WARNING: UNTESTED!";
+  LOG(INFO) << "WARNING: UNTESTED!";
 
   shared_ptr<Blob<Dtype> > alphas_blob =
       shared_ptr<Blob<Dtype> >(new Blob<Dtype>());
@@ -1559,6 +1663,7 @@ INSTANTIATE_CLASS(Solver);
 INSTANTIATE_CLASS(SGDSolver);
 INSTANTIATE_CLASS(NesterovSolver);
 INSTANTIATE_CLASS(AdaGradSolver);
+INSTANTIATE_CLASS(AdaGradLineSearchSolver);
 INSTANTIATE_CLASS(AdaDeltaSolver);
 INSTANTIATE_CLASS(LineSearchSolver);
 INSTANTIATE_CLASS(LineSearchCurrentSolver);
