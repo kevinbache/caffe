@@ -1236,6 +1236,10 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
   Dtype starting_obj = this->net()->ForwardFrom(1);
   Dtype alpha = alpha_start;
   Dtype best_alpha = Dtype(0);
+  // TODO: change back to 0?
+  // set this to n_alphas so that we decide not to
+  // take any step, next time we won't start from the biggest step, we'll
+  // work our way back up from the smallest one.
   int best_alpha_ind = this->n_alphas;
 
   LOG(INFO) << "PLS, start obj: " << \
