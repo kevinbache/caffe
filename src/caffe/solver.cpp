@@ -592,7 +592,6 @@ void SGDSolver<Dtype>::ComputeUpdateValue() {
   DisplayIterInfo(rate);
   ClipGradients();
   Dtype momentum = this->param_.momentum();
-
   this->RegularizeGradient();
 
   switch (Caffe::mode()) {
@@ -1200,8 +1199,21 @@ void LineSearchSolver<Dtype>::PerformLineSearch() {
 }
 
 template <typename Dtype>
+void LineSearchSolver<Dtype>::ScaleDiffByLocalLrParams() {
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  const vector<float>& net_params_lr = this->net_->params_lr();
+
+  for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+    net_params[param_id]->scale_diff(net_params_lr[param_id]);
+  }
+}
+
+
+template <typename Dtype>
 void LineSearchSolver<Dtype>::ComputeUpdateValue() {
   this->TrackAvgGradNorm();
+
+//  ScaleDiffByLocalLrParams();
 
   // perform L1 or L2 regularization
   this->RegularizeGradient();

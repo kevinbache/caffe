@@ -194,6 +194,8 @@ class LineSearchSolver : public SGDSolver<Dtype> {
   virtual void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
   virtual int GetStartingLrIndex();
 
+  virtual void ScaleDiffByLocalLrParams();
+
   // back up net_params.data and net_params.diff to temp_.data and temp_.diff
   // for easy restoration in case the main copy fills with NaNs
   void BackupDataAndDiff();
@@ -208,6 +210,14 @@ class LineSearchSolver : public SGDSolver<Dtype> {
   // multiplier
   Dtype PrepareJumpToAlpha(Dtype param_alpha_next,
       Dtype param_alpha_current, Dtype grad_alpha_current);
+
+  // perform a line search.  after this function has run, data will be left at
+  // data_start - final_data_mult * diff and diff will be left at
+  // diff = final_diff_mult * diff_start.  furthermore, calling net->update()
+  // will leave data at data = data_start - alpha * diff_start where alpha is
+  // the learning rate parameter chosen by the line search.
+  void PerformLineSearch(Dtype & final_data_mult, Dtype & final_diff_mult);
+  void PerformLineSearch();
 
   // make a vector of logarithmically spaced values
   void LogSpace(vector<Dtype>& vect, Dtype log_high_alpha = 2,
@@ -228,9 +238,6 @@ class LineSearchSolver : public SGDSolver<Dtype> {
     CHECK_EQ("", this->param_.lr_policy())
         << "Learning rate policy cannot be applied to DucbSolver.";
   }
-
-  void PerformLineSearch(Dtype &final_data_mult, Dtype & final_diff_mult);
-  void PerformLineSearch();
 
   // alphas_ is the set of all the learning rates we will consider
   vector<Dtype> alphas_;
