@@ -1140,7 +1140,7 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
       Dtype delta_x_correction =
           (final_diff_mult + final_data_mult) / final_diff_mult;
       delta_x_correction *= delta_x_correction;
-      caffe_scale(net_params[param_id]->count(),
+      caffe_scal(net_params[param_id]->count(),
           delta_x_correction,
           this->update_[param_id]->mutable_cpu_data());
 
@@ -1216,7 +1216,7 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
       Dtype delta_x_correction =
           (final_diff_mult + final_data_mult) / final_diff_mult;
       delta_x_correction *= delta_x_correction;
-      caffe_scale(net_params[param_id]->count(),
+      caffe_scal(net_params[param_id]->count(),
           delta_x_correction,
           this->update_[param_id]->mutable_gpu_data());
 
