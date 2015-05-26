@@ -830,7 +830,7 @@ void AdaGradLineSearchSolver<Dtype>::ComputeUpdateValue() {
 
   this->TrackAvgGradNorm();
 
-  SGDSolver<Dtype>::ClipGradients();
+//  SGDSolver<Dtype>::ClipGradients();
 
   this->RegularizeGradient();
 
@@ -1614,6 +1614,17 @@ void LineSearchSolver<Dtype>::RestoreSolverState(const SolverState& state) {
 template <typename Dtype>
 void LineSearchCurrentSolver<Dtype>::PreSolve() {
 
+  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
+  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
+  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
+  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
+  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
+  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
+  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
+  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
+  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
+  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
+
   this->log_high_alpha = this->param_.log_high_alpha();
   this->log_low_alpha = this->param_.log_low_alpha();
   this->n_alphas = this->param_.n_alphas();
@@ -1624,7 +1635,9 @@ void LineSearchCurrentSolver<Dtype>::PreSolve() {
   this->ALPHA_GROW_RATE = 1;
   // start in the middle of the alphas. starting at the top can lead to
   // numerical overflow.
-  this->prev_alpha_index = floor(this->n_alphas / 2);
+  this->prev_alpha_index = floor(this->param_.n_alphas() / 2);
+
+  log(INFO) << "presolve: prev_alpha_ind: " << this->prev_alpha_index << std::endl;
 }
 
 template <typename Dtype>
@@ -1676,7 +1689,7 @@ void LineSearchCurrentSolver<Dtype>::RestoreSolverState(const SolverState& state
   // in practice because it will just backtrack down to where it needs to be
   // during the first iteration anyway.
   this->ALPHA_GROW_RATE = 1;
-  this->prev_alpha_index = 0;
+  this->prev_alpha_index = floor(this->n_alphas / 2);
 }
 
 
