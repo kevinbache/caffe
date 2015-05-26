@@ -1074,6 +1074,8 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
 
   this->RegularizeGradient();
 
+  LOG(INFO) << "AdaDeltaLSS::CUV, about to start!" << std::endl;
+
   size_t update_history_offset = net_params.size();
   switch (Caffe::mode()) {
   case Caffe::CPU:
@@ -1172,6 +1174,8 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
 
+  LOG(INFO) << "AdaDeltaLSS::CUV, bracing for line search!" << std::endl;
+
   // perform line search in the direction chosen by AdaDelta
   // this leaves
   //   net_params.data at data_start - final_data_mult * diff_start
@@ -1182,6 +1186,8 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
   //   so alpha_final = final_diff_mult + final_data_mult
   Dtype final_data_mult, final_diff_mult;
   this->PerformLineSearch(final_data_mult, final_diff_mult);
+
+  LOG(INFO) << "AdaDeltaLSS::CUV, done with line search!" << std::endl;
 
   // corrects the update to account for the fact that the line search
   // doesn't leave diff at alpha_final * diff_start
@@ -1217,6 +1223,8 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
           net_params[param_id]->gpu_diff(), Dtype(2),
           this->update_[param_id]->mutable_gpu_data());
 
+      LOG(INFO) << "AdaDeltaLSS::CUV, about to correct update!" << std::endl;
+
       // correct the update
       caffe_scal(net_params[param_id]->count(),
           delta_x_correction,
@@ -1235,6 +1243,7 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
 
+  LOG(INFO) << "AdaDeltaLSS::CUV, fin!" << std::endl;
 
 
 
