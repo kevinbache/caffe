@@ -1244,6 +1244,8 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
           delta_x_correction,
           this->update_[param_id]->mutable_gpu_data());
 
+      LOG(INFO) << "AdaDeltaLSS::CUV, about to update history!" << std::endl;
+
       // update history of updates
       caffe_gpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
           this->update_[param_id]->gpu_data(), momentum,
