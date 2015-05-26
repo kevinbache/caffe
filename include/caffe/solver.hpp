@@ -374,9 +374,13 @@ template <typename Dtype>
 class AdaDeltaLineSearchSolver : public LineSearchCurrentSolver<Dtype> {
  public:
   explicit AdaDeltaLineSearchSolver(const SolverParameter& param)
-      : LineSearchCurrentSolver<Dtype>(param) { constructor_sanity_check(); }
+      : LineSearchCurrentSolver<Dtype>(param) {
+    PreSolve(); constructor_sanity_check();
+  }
   explicit AdaDeltaLineSearchSolver(const string& param_file)
-      : LineSearchCurrentSolver<Dtype>(param_file) { constructor_sanity_check(); }
+      : LineSearchCurrentSolver<Dtype>(param_file) {
+    PreSolve(); constructor_sanity_check();
+  }
 
  protected:
   virtual void ComputeUpdateValue();

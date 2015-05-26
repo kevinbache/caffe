@@ -1063,6 +1063,20 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
   }
 }
 
+template <typename Dtype>
+void AdaDeltaLineSearchSolver<Dtype>::PreSolve() {
+  // Add the extra history entries for AdaDelta after those from
+  // SGDSolver::PreSolve and possible LineSearchSolver::PreSolve. In the
+  // notation from the AdaDelta paper, the first set of history entries track
+  //  the expected value of g^2.  The second set of history entries track the
+  // expected value of (\Delta x)^2 (i.e.: step sizes squared).
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  for (int i = 0; i < net_params.size(); ++i) {
+        const vector<int>& shape = net_params[i]->shape();
+        this->history_.push_back(
+                shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+  }
+}
 
 template <typename Dtype>
 void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
