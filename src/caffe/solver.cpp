@@ -1064,12 +1064,6 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
 }
 
 
-
-
-
-
-
-
 template <typename Dtype>
 void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
@@ -1613,7 +1607,6 @@ void LineSearchSolver<Dtype>::RestoreSolverState(const SolverState& state) {
 
 template <typename Dtype>
 void LineSearchCurrentSolver<Dtype>::PreSolve() {
-
   LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
   LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
   LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
