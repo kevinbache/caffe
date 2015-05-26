@@ -1637,7 +1637,7 @@ void LineSearchCurrentSolver<Dtype>::PreSolve() {
   // numerical overflow.
   this->prev_alpha_index = floor(this->param_.n_alphas() / 2);
 
-  log(INFO) << "presolve: prev_alpha_ind: " << this->prev_alpha_index << std::endl;
+  LOG(INFO) << "presolve: prev_alpha_ind: " << this->prev_alpha_index << std::endl;
 }
 
 template <typename Dtype>
