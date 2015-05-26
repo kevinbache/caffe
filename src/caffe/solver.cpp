@@ -1426,8 +1426,8 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
   // work our way back up from the smallest one.
   int best_alpha_ind = this->n_alphas;
 
-  LOG(INFO) << "PLS, start obj: " << \
-      starting_obj << std::endl;
+//  LOG(INFO) << "PLS, start obj: " << \
+//      starting_obj << std::endl;
 
   Dtype best_obj = starting_obj;
   Dtype obj = starting_obj;
@@ -1448,8 +1448,8 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
     alpha_param_current = alpha;
     obj = this->net()->ForwardFrom(1);
 
-    LOG(INFO) << "PLS, ind, alpha, obj: " << \
-        i << ", " << alpha << ", " << obj << std::endl;
+//    LOG(INFO) << "PLS, ind, alpha, obj: " << \
+//        i << ", " << alpha << ", " << obj << std::endl;
 
     // TODO: DEAL WITH INF/NAN OBJECTIVE / OVERFLOW.  Restore from backup
     // because there might be bad entries in the parameters
@@ -1474,8 +1474,8 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
     }
   }
 
-  LOG(INFO) << "PLS, best ind, alpha, obj: " << \
-      best_alpha_ind << ", " << best_alpha << ", " << best_obj << std::endl << std::endl;
+//  LOG(INFO) << "PLS, best ind, alpha, obj: " << \
+//      best_alpha_ind << ", " << best_alpha << ", " << best_obj << std::endl << std::endl;
 
   this->prev_alpha_index = best_alpha_ind;
 
@@ -1607,17 +1607,6 @@ void LineSearchSolver<Dtype>::RestoreSolverState(const SolverState& state) {
 
 template <typename Dtype>
 void LineSearchCurrentSolver<Dtype>::PreSolve() {
-  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
-  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
-  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
-  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
-  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
-  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
-  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
-  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
-  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
-  LOG(INFO) << "IN LineSearchCurrentSolver<Dtype>::PreSolve" << std::endl;
-
   this->log_high_alpha = this->param_.log_high_alpha();
   this->log_low_alpha = this->param_.log_low_alpha();
   this->n_alphas = this->param_.n_alphas();
@@ -1628,9 +1617,8 @@ void LineSearchCurrentSolver<Dtype>::PreSolve() {
   this->ALPHA_GROW_RATE = 1;
   // start in the middle of the alphas. starting at the top can lead to
   // numerical overflow.
-  this->prev_alpha_index = floor(this->param_.n_alphas() / 2);
-
-  LOG(INFO) << "presolve: prev_alpha_ind: " << this->prev_alpha_index << std::endl;
+  this->prev_alpha_index =
+      floor(this->param_.n_alphas() / 2) + this->ALPHA_GROW_RATE;
 }
 
 template <typename Dtype>
@@ -1682,7 +1670,8 @@ void LineSearchCurrentSolver<Dtype>::RestoreSolverState(const SolverState& state
   // in practice because it will just backtrack down to where it needs to be
   // during the first iteration anyway.
   this->ALPHA_GROW_RATE = 1;
-  this->prev_alpha_index = floor(this->n_alphas / 2);
+  this->prev_alpha_index =
+      floor(this->param_.n_alphas() / 2) + this->ALPHA_GROW_RATE;
 }
 
 
