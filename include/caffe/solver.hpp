@@ -384,6 +384,7 @@ class AdaDeltaLineSearchSolver : public LineSearchCurrentSolver<Dtype> {
 
  protected:
   virtual void ComputeUpdateValue();
+  virtual void PreSolve();
   void constructor_sanity_check() {
     CHECK_EQ(0, this->param_.base_lr())
         << "Learning rate cannot be used with AdaDeltaLineSearchSolver.";
