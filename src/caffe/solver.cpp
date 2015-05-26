@@ -1118,36 +1118,6 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
           net_params[param_id]->cpu_diff(),
           this->update_[param_id]->cpu_data(),
           net_params[param_id]->mutable_cpu_diff());
-
-      // perform line search in the direction chosen by AdaDelta
-      Dtype final_data_mult, final_diff_mult;
-      this->PerformLineSearch(final_data_mult, final_diff_mult);
-      // this leaves
-      // net_params.data at data_start - final_data_mult * diff_start
-      // net_params.diff at final_diff_mult * diff_start
-      // furthermore:
-      //   final_data_mult = alpha_current
-      //   final_diff_mult = alpha_final - alpha_current
-      // so alpha_final = final_diff_mult + final_data_mult
-
-      // compute square of update
-      caffe_powx(net_params[param_id]->count(),
-          net_params[param_id]->cpu_diff(), Dtype(2),
-          this->update_[param_id]->mutable_cpu_data());
-
-      // correct the update to account for the fact that the line search
-      // doesn't leave diff at alpha_final * diff_start
-      Dtype delta_x_correction =
-          (final_diff_mult + final_data_mult) / final_diff_mult;
-      delta_x_correction *= delta_x_correction;
-      caffe_scal(net_params[param_id]->count(),
-          delta_x_correction,
-          this->update_[param_id]->mutable_cpu_data());
-
-      // update history of updates
-      caffe_cpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
-          this->update_[param_id]->cpu_data(), momentum,
-          this->history_[update_history_offset + param_id]->mutable_cpu_data());
     }
     break;
   case Caffe::GPU:
@@ -1193,29 +1163,61 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
           net_params[param_id]->gpu_diff(),
           this->update_[param_id]->gpu_data(),
           net_params[param_id]->mutable_gpu_diff());
+    }
+#else
+    NO_GPU;
+#endif
+    break;
+  default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
 
-      // perform line search in the direction chosen by AdaDelta
-      Dtype final_data_mult, final_diff_mult;
-      this->PerformLineSearch(final_data_mult, final_diff_mult);
-      // this leaves
-      // net_params.data at data_start - final_data_mult * diff_start
-      // net_params.diff at final_diff_mult * diff_start
-      // furthermore:
-      //   final_data_mult = alpha_current
-      //   final_diff_mult = alpha_final - alpha_current
-      // so alpha_final = final_diff_mult + final_data_mult
+  // perform line search in the direction chosen by AdaDelta
+  // this leaves
+  //   net_params.data at data_start - final_data_mult * diff_start
+  //   net_params.diff at final_diff_mult * diff_start
+  //   furthermore:
+  //     final_data_mult = alpha_current
+  //     final_diff_mult = alpha_final - alpha_current
+  //   so alpha_final = final_diff_mult + final_data_mult
+  Dtype final_data_mult, final_diff_mult;
+  this->PerformLineSearch(final_data_mult, final_diff_mult);
 
+  // corrects the update to account for the fact that the line search
+  // doesn't leave diff at alpha_final * diff_start
+  Dtype delta_x_correction =
+      (final_diff_mult + final_data_mult) / final_diff_mult;
+  delta_x_correction *= delta_x_correction;
 
+  // after the line search, track delta x
+  switch (Caffe::mode()) {
+  case Caffe::CPU:
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      // compute square of update
+      caffe_powx(net_params[param_id]->count(),
+          net_params[param_id]->cpu_diff(), Dtype(2),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // correct the update
+      caffe_scal(net_params[param_id]->count(),
+          delta_x_correction,
+          this->update_[param_id]->mutable_cpu_data());
+
+      // update history of updates
+      caffe_cpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
+          this->update_[param_id]->cpu_data(), momentum,
+          this->history_[update_history_offset + param_id]->mutable_cpu_data());
+    }
+    break;
+  case Caffe::GPU:
+#ifndef CPU_ONLY
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
       // compute square of update
       caffe_gpu_powx(net_params[param_id]->count(),
           net_params[param_id]->gpu_diff(), Dtype(2),
           this->update_[param_id]->mutable_gpu_data());
 
-      // correct the update to account for the fact that the line search
-      // doesn't leave diff at alpha_final * diff_start
-      Dtype delta_x_correction =
-          (final_diff_mult + final_data_mult) / final_diff_mult;
-      delta_x_correction *= delta_x_correction;
+      // correct the update
       caffe_scal(net_params[param_id]->count(),
           delta_x_correction,
           this->update_[param_id]->mutable_gpu_data());
@@ -1232,6 +1234,10 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
   default:
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
+
+
+
+
 }
 
 
