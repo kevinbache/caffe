@@ -1849,10 +1849,11 @@ INSTANTIATE_CLASS(Solver);
 INSTANTIATE_CLASS(SGDSolver);
 INSTANTIATE_CLASS(NesterovSolver);
 INSTANTIATE_CLASS(AdaGradSolver);
-INSTANTIATE_CLASS(AdaGradLineSearchSolver);
 INSTANTIATE_CLASS(AdaDeltaSolver);
 INSTANTIATE_CLASS(LineSearchSolver);
 INSTANTIATE_CLASS(LineSearchCurrentSolver);
 INSTANTIATE_CLASS(DucbSolver);
+INSTANTIATE_CLASS(AdaGradLineSearchSolver);
+INSTANTIATE_CLASS(AdaDeltaLineSearchSolver);
 
 }  // namespace caffe
