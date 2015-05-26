@@ -1219,9 +1219,7 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
           this->update_[param_id]->mutable_cpu_data());
 
       // correct the update
-      caffe_scal(net_params[param_id]->count(),
-          delta_x_correction,
-          this->update_[param_id]->mutable_cpu_data());
+      this->update_[param_id]->scale_data(delta_x_correction);
 
       // update history of updates
       caffe_cpu_axpby(net_params[param_id]->count(), Dtype(1) - momentum,
@@ -1240,9 +1238,7 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
       LOG(INFO) << "AdaDeltaLSS::CUV, about to correct update!" << std::endl;
 
       // correct the update
-      caffe_scal(net_params[param_id]->count(),
-          delta_x_correction,
-          this->update_[param_id]->mutable_gpu_data());
+      this->update_[param_id]->scale_data(delta_x_correction);
 
       LOG(INFO) << "AdaDeltaLSS::CUV, about to update history!" << std::endl;
 
