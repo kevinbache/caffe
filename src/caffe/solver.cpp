@@ -1248,6 +1248,153 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
 }
 
 
+template <typename Dtype>
+void AdamSolver<Dtype>::PreSolve() {
+  // Add the extra history entries for ADAM after those from
+  // SGDSolver::PreSolve and possibly LineSearchSolver::PreSolve. In the
+  // notation from the Adam paper, the first set of history entries track
+  //  the expected value of g.  The second set of history entries track the
+  // expected value of g^2.
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  for (int i = 0; i < net_params.size(); ++i) {
+        const vector<int>& shape = net_params[i]->shape();
+        this->history_.push_back(
+                shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
+  }
+  this->t = 0;
+}
+
+template <typename Dtype>
+void AdamSolver<Dtype>::ComputeUpdateValue() {
+  const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+  size_t hist_offset = net_params.size();
+
+  t = ++this->t;
+
+  Dtype rate = this->GetLearningRate();
+
+  Dtype delta = this->param_.delta();
+  Dtype beta1 = this->param_.beta1();
+  Dtype beta2 = this->param_.beta2();
+  Dtype lambda = this->param_.lambda();
+
+  Dtype beta1t = beta1 * pow(lambda, t - 1);
+
+  Dtype bias_correction = sqrt(1 - pow(beta2, t)) / ( 1 - pow(beta1, t));
+
+  this->ClipGradients();
+
+  this->RegularizeGradient();
+
+  switch (Caffe::mode()) {
+  case Caffe::CPU:
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      // hist_1 = m_t in the notation of the Adam paper
+      caffe_cpu_axpby(net_params[param_id]->count(),
+          Dtype(1) - beta1t, net_params[param_id]->cpu_diff(),
+          beta1t, this->history_[param_id]->mutable_cpu_data());
+
+      // temp = g^2
+      caffe_powx(net_params[param_id]->count(),
+          net_params[param_id]->cpu_diff(), Dtype(2),
+          this->temp_[param_id]->mutable_cpu_data());
+
+      // hist_2 = v_t
+      caffe_cpu_axpby(net_params[param_id]->count(),
+          Dtype(1) - beta2, this->temp_[param_id]->cpu_data(),
+          beta2, this->history_[hist_offset + param_id]->mutable_cpu_data());
+
+      // update = sqrt(v_t)
+      caffe_powx(net_params[param_id]->count(),
+          this->history_[hist_offset + param_id]->mutable_cpu_data(),
+          Dtype(0.5),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // temp = eps^{hat} (which we call delta to share params with AdaGrad)
+      caffe_set(net_params[param_id]->count(), delta,
+          this->temp_[param_id]->mutable_cpu_data());
+
+      // update = sqrt(v_t) + eps
+      caffe_add(net_params[param_id]->count(),
+          this->update_[param_id]->cpu_data(),
+          this->temp_[param_id]->cpu_data(),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // update = m_t / (sqrt(v_t) + eps^{hat})
+      caffe_div(net_params[param_id]->count(),
+          this->history_[param_id]->cpu_data(),
+          this->update_[param_id]->cpu_data(),
+          this->update_[param_id]->mutable_cpu_data());
+
+      // perform line search here
+
+      // diff = alpha_t * m_t / (sqrt(v_t) + eps^{hat})
+      // see bottom of section 2 in Adam paper v5
+      caffe_cpu_axpby(net_params[param_id]->count(),
+          rate * bias_correction,
+          this->update_[param_id]->cpu_data(),
+          Dtype(0),
+          net_params[param_id]->mutable_cpu_diff());
+    }
+    break;
+  case Caffe::GPU:
+#ifndef CPU_ONLY
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      // hist_1 = m_t in the notation of the Adam paper
+      caffe_gpu_axpby(net_params[param_id]->count(),
+          Dtype(1) - beta1t, net_params[param_id]->gpu_diff(),
+          beta1t, this->history_[param_id]->mutable_gpu_data());
+
+      // temp = g^2
+      caffe_gpu_powx(net_params[param_id]->count(),
+          net_params[param_id]->gpu_diff(), Dtype(2),
+          this->temp_[param_id]->mutable_gpu_data());
+
+      // hist_2 = v_t
+      caffe_gpu_axpby(net_params[param_id]->count(),
+          Dtype(1) - beta2, this->temp_[param_id]->gpu_data(),
+          beta2, this->history_[hist_offset + param_id]->mutable_gpu_data());
+
+      // update = sqrt(v_t)
+      caffe_gpu_powx(net_params[param_id]->count(),
+          this->history_[hist_offset + param_id]->mutable_gpu_data(),
+          Dtype(0.5),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // temp = eps^{hat} (which we call delta to share params with AdaGrad)
+      caffe_gpu_set(net_params[param_id]->count(), delta,
+          this->temp_[param_id]->mutable_gpu_data());
+
+      // update = sqrt(v_t) + eps
+      caffe_gpu_add(net_params[param_id]->count(),
+          this->update_[param_id]->gpu_data(),
+          this->temp_[param_id]->gpu_data(),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // update = m_t / (sqrt(v_t) + eps^{hat})
+      caffe_gpu_div(net_params[param_id]->count(),
+          this->history_[param_id]->gpu_data(),
+          this->update_[param_id]->gpu_data(),
+          this->update_[param_id]->mutable_gpu_data());
+
+      // perform line search here to get rate
+
+      // diff = alpha_t * m_t / (sqrt(v_t) + eps^{hat})
+      // see bottom of section 2 in Adam paper v5
+      caffe_gpu_axpby(net_params[param_id]->count(),
+          rate * bias_correction,
+          this->update_[param_id]->gpu_data(),
+          Dtype(0),
+          net_params[param_id]->mutable_gpu_diff());
+    }
+#else
+    NO_GPU;
+#endif
+    break;
+  default:
+    LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
+  }
+}
 
 
 
@@ -1857,5 +2004,6 @@ INSTANTIATE_CLASS(LineSearchCurrentSolver);
 INSTANTIATE_CLASS(DucbSolver);
 INSTANTIATE_CLASS(AdaGradLineSearchSolver);
 INSTANTIATE_CLASS(AdaDeltaLineSearchSolver);
+INSTANTIATE_CLASS(AdamSolver);
 
 }  // namespace caffe

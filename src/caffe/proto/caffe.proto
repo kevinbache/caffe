@@ -88,7 +88,7 @@ message NetParameter {
 // NOTE
 // Update the next available ID when you add a new SolverParameter field.
 //
-// SolverParameter next available ID: 42 (last added: explore_const)
+// SolverParameter next available ID: 45 (last added: lambda)
 message SolverParameter {
   //////////////////////////////////////////////////////////////////////////////
   // Specifying the train and test networks
@@ -190,6 +190,7 @@ message SolverParameter {
     DUCB = 6;
     ADAGRADLINE = 7;
     ADADELTALINE = 8;
+    ADAM = 9;
   }
   optional SolverType solver_type = 30 [default = SGD];
   // numerical stability for AdaGrad
@@ -220,6 +221,16 @@ message SolverParameter {
   optional float ducb_gamma = 40 [default = 0.99];       
   // DUCB explore constant.  higher value means more exploration
   optional float explore_const = 41 [default = 1e-8];  
+
+  /////////////////////  
+  // ADAM parameters //
+  /////////////////////  
+  // exponential averaging coefficient for first moment of gradients 
+  optional float beta1 = 42 [default = 0.9];       
+  // exponential averaging coefficient for second moment of gradients 
+  optional float beta2 = 43 [default = 0.999];       
+  // decay rate for first moment exponential averaging coefficient 
+  optional float lambda = 44 [default = 0.99999999];       
 }
 
 // A message that stores the solver snapshots
