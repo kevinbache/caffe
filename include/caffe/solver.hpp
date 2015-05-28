@@ -201,6 +201,9 @@ class AdamSolver : public SGDSolver<Dtype> {
 
 
 
+
+
+
 template <typename Dtype>
 class LineSearchSolver : public SGDSolver<Dtype> {
  public:
@@ -422,6 +425,31 @@ class AdaDeltaLineSearchSolver : public LineSearchCurrentSolver<Dtype> {
   DISABLE_COPY_AND_ASSIGN(AdaDeltaLineSearchSolver);
 };
 
+template <typename Dtype>
+class AdamLineSearchSolver : public LineSearchCurrentSolver<Dtype> {
+ public:
+  explicit AdamLineSearchSolver(const SolverParameter& param)
+      : LineSearchCurrentSolver<Dtype>(param) {
+    PreSolve(); constructor_sanity_check();
+  }
+  explicit AdamLineSearchSolver(const string& param_file)
+      : LineSearchCurrentSolver<Dtype>(param_file) {
+    PreSolve(); constructor_sanity_check();
+  }
+
+ protected:
+  virtual void ComputeUpdateValue();
+  virtual void PreSolve();
+  void constructor_sanity_check() {
+    CHECK_EQ(0, this->param_.momentum())
+        << "Momentum cannot be used with AdamLineSearchSolver. ";
+  }
+
+  int t;
+
+  DISABLE_COPY_AND_ASSIGN(AdamLineSearchSolver);
+};
+
 
 template <typename Dtype>
 Solver<Dtype>* GetSolver(const SolverParameter& param) {
@@ -448,6 +476,8 @@ Solver<Dtype>* GetSolver(const SolverParameter& param) {
       return new AdaGradLineSearchSolver<Dtype>(param);
   case SolverParameter_SolverType_ADADELTALINE:
       return new AdaDeltaLineSearchSolver<Dtype>(param);
+  case SolverParameter_SolverType_ADAMLINE:
+      return new AdamLineSearchSolver<Dtype>(param);
   default:
       LOG(FATAL) << "Unknown SolverType: " << type;
   }

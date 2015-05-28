@@ -1,17 +1,19 @@
 net: "examples/mnist/mnist_500-300_sigmoid_softmax.prototxt"
 test_state: { stage: 'test-on-train' }
-test_iter: 600
+test_iter: 300
 test_state: { stage: 'test-on-test' }
-test_iter: 100
-test_interval: 600
+test_iter: 50
+test_interval: 300
 test_compute_loss: true
 
-base_lr: 0.001
-lr_policy: "fixed"
 lambda: .99999999
 beta1: 0.9
 beta2: 0.999
 delta: 0.00000001
+
+log_high_alpha: 6
+log_low_alpha: -6
+n_alphas: 99
 
 display: 100
 max_iter: 50000
@@ -19,5 +21,5 @@ snapshot: 10000
 snapshot_prefix: "examples/mnist/mnist_500-300_sigmoid_softmax_ducb_train"
 # solver mode: CPU or GPU
 solver_mode: GPU
-solver_type: ADAM
+solver_type: ADAMLINE
 random_seed: 1
