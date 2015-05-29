@@ -88,7 +88,7 @@ message NetParameter {
 // NOTE
 // Update the next available ID when you add a new SolverParameter field.
 //
-// SolverParameter next available ID: 45 (last added: lambda)
+// SolverParameter next available ID: 46 (last added: line_search_every_n_iters)
 message SolverParameter {
   //////////////////////////////////////////////////////////////////////////////
   // Specifying the train and test networks
@@ -214,6 +214,7 @@ message SolverParameter {
   // the number of log-spaced learning rates to be created between 
   // log_high_alpha and log_low_alpha (inclusive)
   optional int32 n_alphas = 39 [default = 33];        
+  optional int32 line_search_every_n_iters = 45 [default = 1];
 
   ///////////////////////////  
   // DucbSolver parameters //
@@ -232,6 +233,8 @@ message SolverParameter {
   optional float beta2 = 43 [default = 0.999];       
   // decay rate for first moment exponential averaging coefficient 
   optional float lambda = 44 [default = 0.99999999];       
+
+
 }
 
 // A message that stores the solver snapshots

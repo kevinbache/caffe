@@ -442,7 +442,8 @@ void SGDSolver<Dtype>::PreSolve() {
     update_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
     temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
   }
-  ResetAvgGradNorm();
+  Dtype avg_grad_norm, avg_step_norm, eff_learning_rate;
+  ResetAvgGradAndStepNorm(avg_grad_norm, avg_step_norm, eff_learning_rate);
 }
 
 template<typename Dtype>
@@ -450,9 +451,14 @@ void SGDSolver<Dtype>::DisplayIterInfo(Dtype rate) {
   if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
     LOG(INFO) << "Iteration " << this->iter_ << ", lr = " << rate;
     if (this->param_.log_avg_gradient_norm()) {
-      Dtype avg_grad_norm = ResetAvgGradNorm();
+      Dtype avg_grad_norm, avg_step_norm, eff_learning_rate;
+      ResetAvgGradAndStepNorm(avg_grad_norm, avg_step_norm, eff_learning_rate);
       LOG(INFO)<< "Iteration " << this->iter_ << \
           ", avg_grad_norm = " << avg_grad_norm;
+      LOG(INFO)<< "Iteration " << this->iter_ << \
+          ", avg_step_norm = " << avg_step_norm;
+      LOG(INFO)<< "Iteration " << this->iter_ << \
+          ", avg_effective_learning_rate = " << eff_learning_rate;
     }
   }
 }
@@ -475,19 +481,36 @@ void SGDSolver<Dtype>::TrackAvgGradNorm() {
   if (this->param_.log_avg_gradient_norm()) {
     // track sufficient statistics to be able to log the minibatch gradient
     // norm averaged across minibatches
-    grad_norm += GetGradNorm();
+    latest_grad_norm = GetGradNorm();
+    grad_norm += latest_grad_norm;
     n_grad_norm_iters += 1;
   }
 }
 
 template<typename Dtype>
-Dtype SGDSolver<Dtype>::ResetAvgGradNorm() {
+void SGDSolver<Dtype>::TrackAvgStepNorm() {
+  if (this->param_.log_avg_gradient_norm()) {
+    // track sufficient statistics to be able to log the minibatch gradient
+    // norm averaged across minibatches
+    Dtype latest_step_norm = GetGradNorm();
+    step_norm += latest_step_norm;
+    effective_learning_rate += latest_step_norm / latest_grad_norm;
+  }
+}
+
+
+template<typename Dtype>
+void SGDSolver<Dtype>::ResetAvgGradAndStepNorm(Dtype &out_avg_grad_norm,
+    Dtype &out_avg_step_norm, Dtype &out_effective_learning_rate) {
   // reset sufficient statistic totals for logging average minibatch gradient
-  // norm
-  Dtype avg_grad_norm = grad_norm / n_grad_norm_iters;
+  // norm and step norm
+  out_avg_grad_norm = grad_norm / n_grad_norm_iters;
+  out_avg_step_norm = step_norm / n_grad_norm_iters;
+  out_effective_learning_rate = effective_learning_rate / n_grad_norm_iters;
   grad_norm = Dtype(0);
+  step_norm = Dtype(0);
+  effective_learning_rate = Dtype(0);
   n_grad_norm_iters = 0;
-  return avg_grad_norm;
 }
 
 template<typename Dtype>
@@ -588,11 +611,13 @@ void SGDSolver<Dtype>::ComputeUpdateValue() {
   const vector<float>& net_params_lr = this->net_->params_lr();
   // get the learning rate
   Dtype rate = GetLearningRate();
-  TrackAvgGradNorm();
   DisplayIterInfo(rate);
   ClipGradients();
-  Dtype momentum = this->param_.momentum();
   this->RegularizeGradient();
+
+  TrackAvgGradNorm();
+
+  Dtype momentum = this->param_.momentum();
 
   switch (Caffe::mode()) {
   case Caffe::CPU:
@@ -630,6 +655,8 @@ void SGDSolver<Dtype>::ComputeUpdateValue() {
   default:
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
+  // track size of step taken
+  TrackAvgStepNorm();
 }
 
 template <typename Dtype>
@@ -658,11 +685,13 @@ void NesterovSolver<Dtype>::ComputeUpdateValue() {
   const vector<float>& net_params_lr = this->net_->params_lr();
   // get the learning rate
   Dtype rate = this->GetLearningRate();
-  this->TrackAvgGradNorm();
   this->DisplayIterInfo(rate);
+
   SGDSolver<Dtype>::ClipGradients();
 
   this->RegularizeGradient();
+
+  this->TrackAvgGradNorm();
 
   Dtype momentum = this->param_.momentum();
 
@@ -724,6 +753,7 @@ void NesterovSolver<Dtype>::ComputeUpdateValue() {
   default:
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
+  this->TrackAvgStepNorm();
 }
 
 template <typename Dtype>
@@ -734,12 +764,13 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
   Dtype rate = this->GetLearningRate();
   Dtype delta = this->param_.delta();
 
-  this->TrackAvgGradNorm();
   this->DisplayIterInfo(rate);
 
   SGDSolver<Dtype>::ClipGradients();
 
   this->RegularizeGradient();
+
+  this->TrackAvgGradNorm();
 
   switch (Caffe::mode()) {
   case Caffe::CPU:
@@ -819,6 +850,7 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
   default:
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
+  this->TrackAvgStepNorm();
 }
 
 template <typename Dtype>
@@ -828,11 +860,11 @@ void AdaGradLineSearchSolver<Dtype>::ComputeUpdateValue() {
 
   Dtype delta = this->param_.delta();
 
-  this->TrackAvgGradNorm();
-
-//  SGDSolver<Dtype>::ClipGradients();
+  SGDSolver<Dtype>::ClipGradients();
 
   this->RegularizeGradient();
+
+  this->TrackAvgGradNorm();
 
   switch (Caffe::mode()) {
   case Caffe::CPU:
@@ -915,6 +947,8 @@ void AdaGradLineSearchSolver<Dtype>::ComputeUpdateValue() {
   this->PerformLineSearch();
   Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
   this->DisplayIterInfo(chosen_alpha);
+
+  this->TrackAvgStepNorm();
 }
 
 template <typename Dtype>
@@ -938,12 +972,13 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
   Dtype delta = this->param_.delta();
   Dtype momentum = this->param_.momentum();
 
-  this->TrackAvgGradNorm();
   this->DisplayIterInfo(-1);
 
   this->ClipGradients();
 
   this->RegularizeGradient();
+
+  this->TrackAvgGradNorm();
 
   size_t update_history_offset = net_params.size();
   switch (Caffe::mode()) {
@@ -1064,6 +1099,7 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
   default:
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
+  this->TrackAvgStepNorm();
 }
 
 template <typename Dtype>
@@ -1090,6 +1126,8 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
   this->ClipGradients();
 
   this->RegularizeGradient();
+
+  this->TrackAvgGradNorm();
 
   size_t update_history_offset = net_params.size();
   switch (Caffe::mode()) {
@@ -1247,7 +1285,7 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
   default:
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
-
+  this->TrackAvgStepNorm();
 }
 
 
@@ -1273,8 +1311,6 @@ void AdamSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   size_t hist_offset = net_params.size();
 
-  this->TrackAvgGradNorm();
-
   t++;
   Dtype rate = this->GetLearningRate();
 
@@ -1290,6 +1326,8 @@ void AdamSolver<Dtype>::ComputeUpdateValue() {
   this->ClipGradients();
 
   this->RegularizeGradient();
+
+  this->TrackAvgGradNorm();
 
   switch (Caffe::mode()) {
   case Caffe::CPU:
@@ -1401,6 +1439,7 @@ void AdamSolver<Dtype>::ComputeUpdateValue() {
   default:
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
+  this->TrackAvgStepNorm();
 }
 
 template <typename Dtype>
@@ -1425,8 +1464,6 @@ void AdamLineSearchSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   size_t hist_offset = net_params.size();
 
-  this->TrackAvgGradNorm();
-
   t++;
 
   Dtype delta = this->param_.delta();
@@ -1441,6 +1478,8 @@ void AdamLineSearchSolver<Dtype>::ComputeUpdateValue() {
   this->ClipGradients();
 
   this->RegularizeGradient();
+
+  this->TrackAvgGradNorm();
 
   switch (Caffe::mode()) {
   case Caffe::CPU:
@@ -1549,6 +1588,8 @@ void AdamLineSearchSolver<Dtype>::ComputeUpdateValue() {
   this->PerformLineSearch();
   Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
   this->DisplayIterInfo(chosen_alpha);
+
+  this->TrackAvgStepNorm();
 }
 
 
@@ -1597,6 +1638,24 @@ void LineSearchSolver<Dtype>::PreSolve() {
 //    temp_.push_back(shared_ptr<Blob<Dtype> >(new Blob<Dtype>(shape)));
 //  }
 }
+
+
+template<typename Dtype>
+void LineSearchSolver<Dtype>::TrackAvgStepNorm() {
+  if (this->param_.log_avg_gradient_norm()) {
+    // track sufficient statistics to be able to log the minibatch gradient
+    // norm averaged across minibatches
+
+    // correct for the fact that final diff with line search will be left at
+    // prev_diff_mult * g rather than prev_alpha * g
+    Dtype line_search_correction = this->prev_alpha / this->prev_diff_mult;
+
+    Dtype latest_step_norm = this->GetGradNorm() * line_search_correction;
+    this->step_norm += latest_step_norm;
+    this->effective_learning_rate += latest_step_norm / this->latest_grad_norm;
+  }
+}
+
 
 template <typename Dtype>
 void LineSearchSolver<Dtype>::BackupDataAndDiff() {
@@ -1721,12 +1780,34 @@ Dtype LineSearchSolver<Dtype>::PrepareJumpToAlpha(Dtype param_alpha_next,
 template<typename Dtype>
 void LineSearchSolver<Dtype>::PerformLineSearch(
     Dtype & final_data_mult, Dtype & final_diff_mult) {
+
+//  LOG(INFO) << "PLS, iter_, lseni: " << this->iter_ << ", "
+//    << this->param_.line_search_every_n_iters() << std::endl;
+
+  // if we don't want to perform a line search this iteration, just use
+  // whatever alpha we picked last time
+  if (this->iter_ % this->param_.line_search_every_n_iters() != 0) {
+    Dtype alpha = alphas_.at(prev_alpha_index);
+//    LOG(INFO) << "PLS, SKIPPING LINE SEARCH, using alpha: "
+//      << alpha << std::endl;
+
+    const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+      net_params[param_id]->scale_diff(alpha);
+    }
+
+    final_data_mult = Dtype(0);
+    final_diff_mult = alpha;
+
+    return;
+  }
+
   // get the learning rate
   int start_ind = GetStartingLrIndex();
 
   Dtype alpha_start = alphas_.at(start_ind);
 
-//  BackupDataAndDiff();
+  BackupDataAndDiff();
 
   shared_ptr<Net<Dtype> > net = this->net();
 
@@ -1740,8 +1821,7 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
   // work our way back up from the smallest one.
   int best_alpha_ind = this->n_alphas;
 
-//  LOG(INFO) << "PLS, start obj: " << \
-//      starting_obj << std::endl;
+//  LOG(INFO) << "PLS, start obj: " << starting_obj << std::endl;
 
   Dtype best_obj = starting_obj;
   Dtype obj = starting_obj;
@@ -1789,16 +1869,17 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
   }
 
 //  LOG(INFO) << "PLS, best ind, alpha, obj: " << \
-//      best_alpha_ind << ", " << best_alpha << ", " << best_obj << std::endl << std::endl;
+//      best_alpha_ind << ", " << best_alpha << ", " << best_obj << std::endl;
 
   this->prev_alpha_index = best_alpha_ind;
+  this->prev_alpha = best_alpha;
 
   final_diff_mult =
       PrepareJumpToAlpha(best_alpha, alpha_param_current, alpha_grad_current);
   // don't execute the jump with net->update() because that will be done in
   // Solver::Step
-
   final_data_mult = alpha_param_current;
+  this->prev_diff_mult = final_diff_mult;
 }
 
 template<typename Dtype>
@@ -1820,17 +1901,19 @@ void LineSearchSolver<Dtype>::ScaleDiffByLocalLrParams() {
 
 template <typename Dtype>
 void LineSearchSolver<Dtype>::ComputeUpdateValue() {
-  this->TrackAvgGradNorm();
-
   // perform L1 or L2 regularization
   this->RegularizeGradient();
 
-  ScaleDiffByLocalLrParams();
+  this->TrackAvgGradNorm();
+
+//  ScaleDiffByLocalLrParams();
 
   PerformLineSearch();
 
   Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
   this->DisplayIterInfo(chosen_alpha);
+
+  this->TrackAvgStepNorm();
 }
 
 template <typename Dtype>

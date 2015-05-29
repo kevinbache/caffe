@@ -10,7 +10,9 @@ test_compute_loss: true
 
 log_high_alpha: 6
 log_low_alpha: -6
-n_alphas: 80
+n_alphas: 99
+line_search_every_n_iters: 1
+
 
 display: 100
 max_iter: 60000

@@ -96,8 +96,13 @@ class SGDSolver : public Solver<Dtype> {
 
   Dtype GetGradNorm();
   void TrackAvgGradNorm();
-  Dtype ResetAvgGradNorm();
+  virtual void TrackAvgStepNorm();
+  void ResetAvgGradAndStepNorm(Dtype &out_avg_grad_norm,
+      Dtype &out_avg_step_norm, Dtype &effective_learning_rate);
+  Dtype latest_grad_norm;
   Dtype grad_norm;
+  Dtype step_norm;
+  Dtype effective_learning_rate;
   int n_grad_norm_iters;
 
   void RegularizeGradient();
@@ -222,6 +227,8 @@ class LineSearchSolver : public SGDSolver<Dtype> {
   virtual void SnapshotSolverState(SolverState* state);
   virtual void RestoreSolverState(const SolverState& state);
 
+  virtual void TrackAvgStepNorm();
+
   virtual void GrantReward(Dtype old_obj, Dtype new_obj, int lr_index);
   virtual int GetStartingLrIndex();
 
@@ -283,6 +290,13 @@ class LineSearchSolver : public SGDSolver<Dtype> {
 
   // the index of the alpha value which was used in the previous iteration
   int prev_alpha_index;
+
+  // the chosen alpha value from the previous iteration
+  Dtype prev_alpha;
+
+  // diff was left at prev_diff_mult * g in the previous iteration.
+  // this is different than prev_alpha because of how the line search works
+  Dtype prev_diff_mult;
 
   // base-10 log of the smallest learning rate value to be considered
   // default: -6
