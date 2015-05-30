@@ -175,6 +175,10 @@ void Solver<Dtype>::Step(int iters) {
     if (param_.test_interval() && iter_ % param_.test_interval() == 0 \
         && (iter_ > 0 || param_.test_initialization()) ) {
       TestAll();
+      // Check if training has gone on too long
+      if (max_seconds > 0  && difftime( time(0), start) > max_seconds) {
+        break;
+      }
     }
 
     const bool display = param_.display() && iter_ % param_.display() == 0;
@@ -236,10 +240,6 @@ void Solver<Dtype>::Step(int iters) {
       Snapshot();
     }
 
-    // Check if training has gone on too long
-    if (max_seconds > 0  && difftime( time(0), start) > max_seconds) {
-      break;
-    }
   }
 }
 
