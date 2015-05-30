@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <math.h> // for isnan, log
+#include <time.h> // for difftime, time
 #include "caffe/net.hpp"
 #include "caffe/proto/caffe.pb.h"
 #include "caffe/solver.hpp"
@@ -167,6 +168,9 @@ void Solver<Dtype>::Step(int iters) {
   vector<Dtype> losses;
   Dtype smoothed_loss = 0;
 
+
+  double max_seconds = this->param_.max_seconds();
+  time_t start = time(0);
   for (; iter_ < stop_iter; ++iter_) {
     if (param_.test_interval() && iter_ % param_.test_interval() == 0 \
         && (iter_ > 0 || param_.test_initialization()) ) {
@@ -230,6 +234,11 @@ void Solver<Dtype>::Step(int iters) {
     // Save a snapshot if needed.
     if (param_.snapshot() && (iter_ + 1) % param_.snapshot() == 0) {
       Snapshot();
+    }
+
+    // Check if training has gone on too long
+    if (max_seconds > 0  && difftime( time(0), start) > max_seconds) {
+      break;
     }
   }
 }

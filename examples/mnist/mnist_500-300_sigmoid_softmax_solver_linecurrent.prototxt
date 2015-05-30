@@ -16,6 +16,7 @@ line_search_every_n_iters: 1
 
 display: 100
 max_iter: 60000
+max_seconds: 30
 snapshot: 600
 snapshot_prefix: "examples/mnist/mnist_500-300_sigmoid_softmax_ducb_train"
 solver_mode: GPU
