@@ -141,7 +141,7 @@ message SolverParameter {
   // Display the loss averaged over the last average_loss iterations
   optional int32 average_loss = 33 [default = 1];
   optional int32 max_iter = 7; // the maximum number of iterations
-  optional int32 max_seconds = 46 [default = 0];; // the maximum number of seconds to train
+  optional int32 max_seconds = 46 [default = 0]; // the maximum number of seconds to train
   optional string lr_policy = 8; // The learning rate decay policy.
   optional float gamma = 9; // The parameter to compute the learning rate.
   optional float power = 10; // The parameter to compute the learning rate.
