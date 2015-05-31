@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #include <math.h> // for isnan, log
-#include <time.h> // for difftime, time
+//#include <time.h> // for difftime, time
 #include "caffe/net.hpp"
 #include "caffe/proto/caffe.pb.h"
 #include "caffe/solver.hpp"
