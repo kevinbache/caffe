@@ -169,7 +169,7 @@ void Solver<Dtype>::Step(int iters) {
   Dtype smoothed_loss = 0;
 
 
-  double max_seconds = this->param_.max_seconds();
+  double max_seconds = (double) this->param_.max_seconds();
   time_t start = time(0);
   for (; iter_ < stop_iter; ++iter_) {
     if (param_.test_interval() && iter_ % param_.test_interval() == 0 \
