@@ -620,7 +620,6 @@ void SGDSolver<Dtype>::ComputeUpdateValue() {
   const vector<float>& net_params_lr = this->net_->params_lr();
   // get the learning rate
   Dtype rate = GetLearningRate();
-  DisplayIterInfo(rate);
   ClipGradients();
   this->RegularizeGradient();
 
@@ -666,6 +665,7 @@ void SGDSolver<Dtype>::ComputeUpdateValue() {
   }
   // track size of step taken
   TrackAvgStepNorm();
+  DisplayIterInfo(rate);
 }
 
 template <typename Dtype>
@@ -694,7 +694,6 @@ void NesterovSolver<Dtype>::ComputeUpdateValue() {
   const vector<float>& net_params_lr = this->net_->params_lr();
   // get the learning rate
   Dtype rate = this->GetLearningRate();
-  this->DisplayIterInfo(rate);
 
   SGDSolver<Dtype>::ClipGradients();
 
@@ -763,6 +762,7 @@ void NesterovSolver<Dtype>::ComputeUpdateValue() {
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
   this->TrackAvgStepNorm();
+  this->DisplayIterInfo(rate);
 }
 
 template <typename Dtype>
@@ -772,8 +772,6 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
   // get the learning rate
   Dtype rate = this->GetLearningRate();
   Dtype delta = this->param_.delta();
-
-  this->DisplayIterInfo(rate);
 
   SGDSolver<Dtype>::ClipGradients();
 
@@ -860,6 +858,7 @@ void AdaGradSolver<Dtype>::ComputeUpdateValue() {
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
   this->TrackAvgStepNorm();
+  this->DisplayIterInfo(rate);
 }
 
 template <typename Dtype>
@@ -954,10 +953,11 @@ void AdaGradLineSearchSolver<Dtype>::ComputeUpdateValue() {
 
   // perform a line search in the AdaGrad direction
   this->PerformLineSearch();
-  Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
-  this->DisplayIterInfo(chosen_alpha);
 
   this->TrackAvgStepNorm();
+
+  Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
+  this->DisplayIterInfo(chosen_alpha);
 }
 
 template <typename Dtype>
@@ -980,8 +980,6 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
   const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
   Dtype delta = this->param_.delta();
   Dtype momentum = this->param_.momentum();
-
-  this->DisplayIterInfo(-1);
 
   this->ClipGradients();
 
@@ -1033,8 +1031,6 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
           net_params[param_id]->cpu_diff(),
           this->update_[param_id]->cpu_data(),
           net_params[param_id]->mutable_cpu_diff());
-
-      // perform line search here
 
       // compute square of update
       caffe_powx(net_params[param_id]->count(),
@@ -1109,6 +1105,8 @@ void AdaDeltaSolver<Dtype>::ComputeUpdateValue() {
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
   this->TrackAvgStepNorm();
+
+  this->DisplayIterInfo(-1);
 }
 
 template <typename Dtype>
@@ -1236,6 +1234,8 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
 
+  this->ScaleDiffByLocalLrParams();
+
   // perform line search in the direction chosen by AdaDelta
   // this leaves
   //   net_params.data at data_start - final_data_mult * diff_start
@@ -1295,6 +1295,9 @@ void AdaDeltaLineSearchSolver<Dtype>::ComputeUpdateValue() {
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
   this->TrackAvgStepNorm();
+
+  Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
+  this->DisplayIterInfo(chosen_alpha);
 }
 
 
@@ -1322,8 +1325,6 @@ void AdamSolver<Dtype>::ComputeUpdateValue() {
 
   t++;
   Dtype rate = this->GetLearningRate();
-
-  this->DisplayIterInfo(rate);
 
   Dtype delta = this->param_.delta();
   Dtype beta1 = this->param_.beta1();
@@ -1449,6 +1450,8 @@ void AdamSolver<Dtype>::ComputeUpdateValue() {
     LOG(FATAL) << "Unknown caffe mode: " << Caffe::mode();
   }
   this->TrackAvgStepNorm();
+
+  this->DisplayIterInfo(rate);
 }
 
 template <typename Dtype>
@@ -1595,19 +1598,11 @@ void AdamLineSearchSolver<Dtype>::ComputeUpdateValue() {
 
   // perform a line search in the Adam direction
   this->PerformLineSearch();
+  this->TrackAvgStepNorm();
+
   Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
   this->DisplayIterInfo(chosen_alpha);
-
-  this->TrackAvgStepNorm();
 }
-
-
-
-
-
-
-
-
 
 
 template<typename Dtype>
@@ -1800,10 +1795,12 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
 //    LOG(INFO) << "PLS, SKIPPING LINE SEARCH, using alpha: "
 //      << alpha << std::endl;
 
-    const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
-    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
-      net_params[param_id]->scale_diff(alpha);
-    }
+      // don't perform local lr scaling here.  we assume that it has already
+      // been done by the calling code
+//    const vector<shared_ptr<Blob<Dtype> > >& net_params = this->net_->params();
+//    for (int param_id = 0; param_id < net_params.size(); ++param_id) {
+//      net_params[param_id]->scale_diff(alpha);
+//    }
 
     final_data_mult = Dtype(0);
     final_diff_mult = alpha;
@@ -1915,14 +1912,15 @@ void LineSearchSolver<Dtype>::ComputeUpdateValue() {
 
   this->TrackAvgGradNorm();
 
-//  ScaleDiffByLocalLrParams();
+  // scaling the diffs by local lr params isn't done in PerformLineSearch()
+  ScaleDiffByLocalLrParams();
 
   PerformLineSearch();
 
+  this->TrackAvgStepNorm();
+
   Dtype chosen_alpha = this->alphas_[this->prev_alpha_index];
   this->DisplayIterInfo(chosen_alpha);
-
-  this->TrackAvgStepNorm();
 }
 
 template <typename Dtype>
