@@ -1827,7 +1827,7 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
   // work our way back up from the smallest one.
   int best_alpha_ind = this->n_alphas;
 
-//  LOG(INFO) << "PLS, start obj: " << starting_obj << std::endl;
+  LOG(INFO) << "PLS, start obj: " << starting_obj << std::endl;
 
   Dtype best_obj = starting_obj;
   Dtype obj = starting_obj;
@@ -1848,8 +1848,8 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
     alpha_param_current = alpha;
     obj = this->net()->ForwardFrom(1);
 
-//    LOG(INFO) << "PLS, ind, alpha, obj: " << \
-//        i << ", " << alpha << ", " << obj << std::endl;
+    LOG(INFO) << "PLS, ind, alpha, obj: " << \
+        i << ", " << alpha << ", " << obj << std::endl;
 
     // TODO: DEAL WITH INF/NAN OBJECTIVE / OVERFLOW.  Restore from backup
     // because there might be bad entries in the parameters
@@ -1874,8 +1874,8 @@ void LineSearchSolver<Dtype>::PerformLineSearch(
     }
   }
 
-//  LOG(INFO) << "PLS, best ind, alpha, obj: " << \
-//      best_alpha_ind << ", " << best_alpha << ", " << best_obj << std::endl;
+  LOG(INFO) << "PLS, best ind, alpha, obj: " << \
+      best_alpha_ind << ", " << best_alpha << ", " << best_obj << std::endl;
 
   this->prev_alpha_index = best_alpha_ind;
   this->prev_alpha = best_alpha;
