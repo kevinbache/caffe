@@ -2023,7 +2023,7 @@ void LineSearchCurrentSolver<Dtype>::PreSolve() {
   // numerical overflow.
 //  this->prev_alpha_index =
 //      floor(this->param_.n_alphas() / 2) + this->ALPHA_GROW_RATE;
-    this->prev_alpha_index = this->param_.n_alphas();
+    this->prev_alpha_index = this->param_.n_alphas() - this->ALPHA_GROW_RATE;
 }
 
 template <typename Dtype>
