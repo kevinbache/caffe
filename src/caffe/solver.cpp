@@ -2021,9 +2021,9 @@ void LineSearchCurrentSolver<Dtype>::PreSolve() {
   this->ALPHA_GROW_RATE = 1;
   // start in the middle of the alphas. starting at the top can lead to
   // numerical overflow.
-//  this->prev_alpha_index =
-//      floor(this->param_.n_alphas() / 2) + this->ALPHA_GROW_RATE;
-    this->prev_alpha_index = this->param_.n_alphas() - this->ALPHA_GROW_RATE;
+  this->prev_alpha_index =
+      floor(this->param_.n_alphas() / 2) + this->ALPHA_GROW_RATE;
+//  this->prev_alpha_index = this->param_.n_alphas() - this->ALPHA_GROW_RATE;
 }
 
 template <typename Dtype>
